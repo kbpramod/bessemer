@@ -153,6 +153,36 @@ uv add --dev <package-name>
 ```
 
 ---
+---
+
+## Frontend Setup
+
+The frontend is built with **React, TypeScript, and Vite**.
+
+### 1. Install Node.js
+
+Node.js is required to run the React frontend and Vite development server.
+
+Download and install the **LTS version of Node.js** from the official Node.js website:
+
+https://nodejs.org/
+
+After installation, verify that Node.js is installed:
+
+node --version
+
+### 2. Navigate to the Client Directory
+cd client
+
+### 3. Install Frontend Dependencies
+npm install
+
+### 4. Run the Frontend Development Server
+npm run dev
+
+The terminal will display a local URL, typically:
+http://localhost:5173
+
 
 ## Contribution Workflow
 
