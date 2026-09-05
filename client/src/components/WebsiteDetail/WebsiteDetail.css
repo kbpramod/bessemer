@@ -1,0 +1,237 @@
+.detail {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 24px 20px 60px;
+}
+
+.detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 12px 0 20px;
+}
+
+.detail-header h1 {
+  margin: 0;
+  font-size: 26px;
+}
+
+.detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.detail-actions .save-prompt-button {
+  margin-top: 0;
+}
+
+/* Discovery progress log */
+
+.discovery-log {
+  padding: 14px 16px;
+  margin-bottom: 20px;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  background: #fafafa;
+}
+
+.discovery-log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.discovery-log ul {
+  margin: 0;
+  padding-left: 18px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.discovery-log li {
+  font-size: 13px;
+  line-height: 1.7;
+  color: #444;
+  word-break: break-word;
+}
+
+.discovery-hint {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: #777;
+}
+
+/* Tabs */
+
+.tab-bar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #e5e5e5;
+}
+
+.tab {
+  padding: 10px 16px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: #6b7280;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: #222;
+}
+
+.tab.active {
+  color: #2563eb;
+  border-bottom-color: #2563eb;
+}
+
+/* Run history table */
+
+.runs-table {
+  overflow-x: auto;
+}
+
+.runs-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.runs-table th,
+.runs-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+  vertical-align: top;
+}
+
+.runs-table th {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #6b7280;
+}
+
+.runs-table .status {
+  display: inline-block;
+}
+
+.run-error {
+  max-width: 320px;
+  color: #777;
+}
+
+/* Settings */
+
+.settings-block {
+  padding: 18px 20px;
+  margin-bottom: 16px;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.settings-block h3 {
+  margin: 0 0 12px;
+  font-size: 15px;
+}
+
+.settings-block dl {
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.settings-block dl div {
+  display: flex;
+  gap: 12px;
+  font-size: 14px;
+}
+
+.settings-block dt {
+  width: 140px;
+  color: #6b7280;
+}
+
+.settings-block dd {
+  margin: 0;
+  color: #222;
+  word-break: break-all;
+}
+
+.account-list {
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+}
+
+.account-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 14px;
+}
+
+.account-role {
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: #f3f4f6;
+  color: #555;
+  font-size: 12px;
+}
+
+.account-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.account-form input {
+  flex: 1;
+  min-width: 140px;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+}
+
+.account-form input:focus {
+  border-color: #2563eb;
+}
+
+.settings-block.danger {
+  border-color: #f5c2c2;
+}
+
+.settings-block.danger p {
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: #777;
+}
+
+.delete-button {
+  padding: 9px 16px;
+  border: none;
+  border-radius: 6px;
+  background: #c62828;
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.delete-button:hover {
+  background: #a71d1d;
+}

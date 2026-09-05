@@ -1,0 +1,178 @@
+.dashboard{
+    padding: 20px;
+}
+.dashboard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.dashboard-header h1 {
+  margin: 0;
+}
+
+.dashboard-subtitle {
+  margin: 6px 0 0;
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.dashboard-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dashboard-actions .save-prompt-button {
+  margin-top: 0;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.dashboard-error {
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  border: 1px solid #f5c2c2;
+  border-radius: 8px;
+  background: #fdecec;
+  color: #c62828;
+  font-size: 14px;
+}
+
+.run-summary {
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  background: #fafafa;
+  font-size: 14px;
+  color: #444;
+}
+
+.dashboard-empty {
+  font-size: 14px;
+  color: #6b7280;
+}
+
+/* Registered website list */
+
+.website-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.website-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  padding: 16px 20px;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.website-row:hover {
+  border-color: #c7d2fe;
+  background: #fafbff;
+}
+
+.website-row-main h3 {
+  margin: 0 0 4px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #222;
+}
+
+.website-row-url {
+  font-size: 13px;
+  color: #777;
+  word-break: break-all;
+}
+
+.website-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.website-row-id {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.website-row-chevron {
+  font-size: 20px;
+  color: #9ca3af;
+}
+
+.prompt-button {
+  padding: 10px 16px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.prompt-button:hover {
+  background: #f5f5f5;
+}
+
+.prompt-section {
+  padding: 16px;
+  margin-bottom: 20px;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  background: white;
+}
+
+.prompt-section textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 14px;
+  outline: none;
+}
+
+.prompt-section textarea:focus {
+  border-color: #999;
+}
+
+.save-prompt-button {
+  margin-top: 10px;
+  padding: 9px 16px;
+  border: none;
+  border-radius: 6px;
+  background: #222;
+  color: white;
+  cursor: pointer;
+}
+.credentials-button {
+  padding: 10px 16px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: white;
+  color: #222;
+  cursor: pointer;
+  font-size: 14px;
+}
+.credentials-button:hover {
+  background: #f5f5f5;
+}
+.button-container{
+    padding: 20px;
+}

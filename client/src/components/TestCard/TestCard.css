@@ -1,0 +1,114 @@
+.test-card {
+  width: 100%;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  background: #ffffff;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.test-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+}
+
+.test-info h3 {
+  margin: 0 0 5px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #222;
+}
+
+.run-count {
+  font-size: 13px;
+  color: #777;
+}
+
+.test-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Status badge styles live in App.css and are shared across views. */
+
+.run-now-button {
+  padding: 6px 12px;
+  border: 1px solid #2563eb;
+  border-radius: 5px;
+  background: #fff;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.run-now-button:hover {
+  background: #eff4ff;
+}
+
+.run-now-button:disabled {
+  border-color: #d1d5db;
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
+.due-badge {
+  padding: 5px 9px;
+  border-radius: 5px;
+  background: #fff7e6;
+  color: #8a5a00;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.status-icon {
+  font-size: 14px;
+  font-weight: bold;
+}
+
+/* Open / Close button */
+
+.toggle-button {
+  width: 32px;
+  height: 32px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border: 1px solid #ddd;
+  border-radius: 5px;
+
+  background: #fff;
+  cursor: pointer;
+
+  font-size: 18px;
+}
+
+.toggle-button:hover {
+  background: #f5f5f5;
+}
+
+/* Details */
+
+.test-card-details {
+  padding: 18px 20px;
+  border-top: 1px solid #e5e5e5;
+  background: #fafafa;
+}
+
+.test-card-details h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.test-card-details p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #555;
+}
