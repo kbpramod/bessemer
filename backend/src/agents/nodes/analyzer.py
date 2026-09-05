@@ -18,19 +18,19 @@ A Playwright automated user journey test has executed. Your job is to answer:
    - Locator not found or wrong selector.
    - Test code error (missing import, NameError, wrong Playwright API usage).
    - Timing/waiting issue on dynamic DOM elements.
-3. "APP_BUG": A Genuine Application Defect. The automation correctly interacted, but the application failed.
+3. "SUSPECTED_APP_FAILURE": A Potential Genuine Application Defect. The automation attempted interaction, but the application failed.
    Evidence examples:
    - HTTP 500 / 502 / 503 Internal Server Error from backend.
    - Uncaught application JavaScript exception originating from the application code.
-   - Application crash or broken business logic (e.g., valid form submission triggered an unexpected failure state).
+   - Application crash or broken business logic (e.g., valid form submission triggered an unexpected error page).
 
 Analyze the test scenario goal, error summary, stderr, stdout, and test code.
 Return strictly a JSON object:
 {
-  "verdict": "PASS" | "NEED_HEAL" | "APP_BUG",
+  "verdict": "PASS" | "NEED_HEAL" | "SUSPECTED_APP_FAILURE",
   "reason": "Detailed explanation of whether the user journey succeeded or why it failed based on evidence",
   "failure_type": "hidden_responsive_variant" | "selector_mismatch" | "test_code_error" | "timeout" | "assertion_failure" | "server_error" | "uncaught_app_exception",
-  "suggested_fix": "Concrete guidance for the healer on how to repair the automation, or bug details for developers"
+  "suggested_fix": "Concrete guidance for the healer on how to repair the automation, or suspected bug details"
 }
 Output ONLY valid JSON.
 """
@@ -55,33 +55,52 @@ def analyzer_node(state: ForgeState) -> Dict[str, Any]:
             "failure_type": None,
             "suggested_fix": None,
         }
-        logger.info(f"[ANALYZER] Test '{current_test.get('id')}' PASSED!")
+        test_id = str(current_test.get("test_id") or current_test.get("id") or "unknown_test")
+        logger.info(f"[ANALYZER] Test '{test_id}' PASSED!")
+
         # Record into suite summary
         suite_summary.append({
-            "id": current_test.get("id"),
+            "id": test_id,
             "title": current_test.get("title"),
             "status": "PASSED",
             "heals_needed": heal_attempt,
             "duration_s": exec_res.get("duration_s", 0.0),
         })
+
+        # Record test run and update cron timestamps in PostgreSQL
+        try:
+            from datetime import datetime, timezone
+            from db.repository import ForgeRepository
+            run_id = f"run_{test_id}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
+            ForgeRepository.record_test_run(
+                run_id=run_id,
+                test_id=test_id,
+                exit_code=0,
+                status="passed",
+                duration_s=exec_res.get("duration_s", 0.0),
+                stdout=exec_res.get("stdout", ""),
+                stderr=exec_res.get("stderr", ""),
+                screenshot_paths=exec_res.get("screenshot_paths", []),
+                trace_path=exec_res.get("trace_path"),
+            )
+            cron_hours = current_test.get("cron_interval_hours", 24)
+            ForgeRepository.update_test_run_timestamps(test_id, cron_hours)
+            logger.info(f"[ANALYZER] Indexed PASS in test_runs and advanced next_run_at by {cron_hours}h.")
+        except Exception as db_err:
+            logger.warning(f"[ANALYZER] Could not update PostgreSQL run metrics: {db_err}")
+
         return {"analysis": analysis, "suite_summary": suite_summary}
+
 
     # Test failed: check heal budget
     if heal_attempt >= max_heal_attempts:
-        logger.warning(f"[ANALYZER] Heal budget exceeded ({heal_attempt}/{max_heal_attempts}) for '{current_test.get('id')}'. Flagging failure.")
+        logger.warning(f"[ANALYZER] Heal budget exceeded ({heal_attempt}/{max_heal_attempts}) for '{current_test.get('id')}'. Routing to verification.")
         analysis = {
-            "verdict": "APP_BUG",
-            "reason": f"Maximum heal attempts ({max_heal_attempts}) exceeded. Unresolved issue: {exec_res.get('error_summary')}",
+            "verdict": "SUSPECTED_APP_FAILURE",
+            "reason": f"Maximum heal attempts ({max_heal_attempts}) reached without resolution: {exec_res.get('error_summary')}",
             "failure_type": "max_heals_exceeded",
-            "suggested_fix": "Manual inspection required; test locators could not auto-align with target page.",
+            "suggested_fix": "Verify if application UI or backend changed unexpectedly.",
         }
-        suite_summary.append({
-            "id": current_test.get("id"),
-            "title": current_test.get("title"),
-            "status": "FAILED_MAX_HEALS",
-            "heals_needed": heal_attempt,
-            "error": exec_res.get("error_summary"),
-        })
         return {"analysis": analysis, "suite_summary": suite_summary}
 
     # Analyze failure cause with LLM
@@ -117,7 +136,14 @@ def analyzer_node(state: ForgeState) -> Dict[str, Any]:
             content = "\n".join(lines).strip()
 
         analysis_dict = json.loads(content)
-        verdict = analysis_dict.get("verdict", "NEED_HEAL")
+        raw_verdict = str(analysis_dict.get("verdict", "NEED_HEAL")).strip().upper()
+        if raw_verdict in ("APP_BUG", "SUSPECTED_APP_FAILURE"):
+            verdict = "SUSPECTED_APP_FAILURE"
+        elif raw_verdict == "PASS":
+            verdict = "PASS"
+        else:
+            verdict = "NEED_HEAL"
+
         analysis = {
             "verdict": verdict,
             "reason": analysis_dict.get("reason", "Detected defect requiring resolution."),
@@ -135,11 +161,11 @@ def analyzer_node(state: ForgeState) -> Dict[str, Any]:
 
     logger.info(f"[ANALYZER] Verdict for '{current_test.get('id')}': {analysis['verdict']} ({analysis.get('reason')})")
 
-    if analysis["verdict"] == "APP_BUG":
+    if analysis["verdict"] == "SUSPECTED_APP_FAILURE":
         suite_summary.append({
             "id": current_test.get("id"),
             "title": current_test.get("title"),
-            "status": "CONFIRMED_BUG",
+            "status": "SUSPECTED_APP_FAILURE",
             "heals_needed": heal_attempt,
             "error": analysis["reason"],
         })

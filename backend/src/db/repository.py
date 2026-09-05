@@ -229,14 +229,25 @@ class ForgeRepository:
         script_path: Optional[str] = None,
         test_code: Optional[str] = None,
         language: str = "typescript",
+        website_id: Optional[int] = None,
+        cron_interval_hours: Optional[int] = 24,
+        cron_expression: Optional[str] = None,
     ) -> None:
+        if not cron_expression and cron_interval_hours:
+            if 24 % cron_interval_hours == 0:
+                cron_expression = f"0 */{cron_interval_hours} * * *"
+            else:
+                cron_expression = "0 0 * * *"
+
         sql = """
         INSERT INTO tests (
             test_id, domain, page_url, title, description, category, priority,
-            steps, expected_outcome, script_path, test_code, language, status, updated_at
+            steps, expected_outcome, script_path, test_code, language, status,
+            website_id, cron_interval_hours, cron_expression, updated_at
         ) VALUES (
             :test_id, :domain, :page_url, :title, :description, :category, :priority,
-            :steps, :expected_outcome, :script_path, :test_code, :language, 'active', NOW()
+            :steps, :expected_outcome, :script_path, :test_code, :language, 'active',
+            :website_id, :cron_interval_hours, :cron_expression, NOW()
         )
         ON CONFLICT (test_id) DO UPDATE SET
             title = EXCLUDED.title,
@@ -246,6 +257,9 @@ class ForgeRepository:
             script_path = COALESCE(EXCLUDED.script_path, tests.script_path),
             test_code = COALESCE(EXCLUDED.test_code, tests.test_code),
             language = EXCLUDED.language,
+            website_id = COALESCE(EXCLUDED.website_id, tests.website_id),
+            cron_interval_hours = COALESCE(EXCLUDED.cron_interval_hours, tests.cron_interval_hours),
+            cron_expression = COALESCE(EXCLUDED.cron_expression, tests.cron_expression),
             status = 'active',
             updated_at = NOW();
         """
@@ -265,8 +279,50 @@ class ForgeRepository:
                     "script_path": script_path,
                     "test_code": test_code,
                     "language": language,
+                    "website_id": website_id,
+                    "cron_interval_hours": cron_interval_hours,
+                    "cron_expression": cron_expression,
                 },
             )
+
+    @staticmethod
+    def get_test_by_id(test_id: str) -> Optional[Dict[str, Any]]:
+        """Fetches a test record including its script_path and cron schedule."""
+        sql = "SELECT * FROM tests WHERE test_id = :test_id;"
+        with get_connection() as conn:
+            row = conn.execute(text(sql), {"test_id": test_id}).mappings().first()
+            return dict(row) if row else None
+
+    @staticmethod
+    def update_test_schedule(
+        test_id: str,
+        cron_interval_hours: int,
+        cron_expression: Optional[str] = None,
+    ) -> bool:
+        """Updates the cron schedule and execution timing for a test."""
+        if not cron_expression and cron_interval_hours:
+            if 24 % cron_interval_hours == 0:
+                cron_expression = f"0 */{cron_interval_hours} * * *"
+            else:
+                cron_expression = "0 0 * * *"
+
+        sql = """
+        UPDATE tests
+        SET cron_interval_hours = :cron_interval_hours,
+            cron_expression = :cron_expression,
+            updated_at = NOW()
+        WHERE test_id = :test_id;
+        """
+        with get_connection() as conn:
+            res = conn.execute(
+                text(sql),
+                {
+                    "test_id": test_id,
+                    "cron_interval_hours": cron_interval_hours,
+                    "cron_expression": cron_expression,
+                },
+            )
+            return res.rowcount > 0
 
     @staticmethod
     def record_test_run(
@@ -332,6 +388,56 @@ class ForgeRepository:
                     "fix_plan": fix_plan,
                 },
             )
+
+    @staticmethod
+    def get_due_tests(domain: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
+        """
+        Retrieves active tests that are due for execution based on their cron schedule:
+        - Never run (last_run_at IS NULL or next_run_at IS NULL)
+        - Scheduled run time has passed (next_run_at <= NOW())
+        - Elapsed time since last run exceeds cron_interval_hours
+        """
+        sql = """
+        SELECT * FROM tests
+        WHERE status = 'active'
+          AND (
+            last_run_at IS NULL
+            OR next_run_at IS NULL
+            OR next_run_at <= NOW()
+            OR last_run_at <= NOW() - (COALESCE(cron_interval_hours, 24) * INTERVAL '1 hour')
+          )
+        """
+        params: Dict[str, Any] = {"limit": limit}
+        if domain:
+            sql += " AND domain = :domain"
+            params["domain"] = domain
+        sql += " ORDER BY priority DESC, COALESCE(last_run_at, '1970-01-01'::timestamptz) ASC LIMIT :limit;"
+
+        with get_connection() as conn:
+            rows = conn.execute(text(sql), params).mappings().all()
+            return [dict(r) for r in rows]
+
+    @staticmethod
+    def update_test_run_timestamps(test_id: Any, cron_interval_hours: Optional[int] = None) -> None:
+        """
+        Updates last_run_at to NOW() and advances next_run_at by cron_interval_hours.
+        """
+        sql = """
+        UPDATE tests
+        SET last_run_at = NOW(),
+            next_run_at = NOW() + (COALESCE(:hours, cron_interval_hours, 24) * INTERVAL '1 hour'),
+            updated_at = NOW()
+        WHERE test_id = :test_id OR id::text = :test_id;
+        """
+        with get_connection() as conn:
+            conn.execute(
+                text(sql),
+                {
+                    "test_id": str(test_id),
+                    "hours": cron_interval_hours,
+                },
+            )
+
 
     @staticmethod
     def get_active_tests(domain: Optional[str] = None) -> List[Dict[str, Any]]:

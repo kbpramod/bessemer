@@ -39,9 +39,9 @@ class ExecutionResult(TypedDict, total=False):
 
 
 class AnalysisResult(TypedDict, total=False):
-    verdict: str  # "PASS", "NEED_HEAL", "APP_BUG", "FATAL_ERROR"
+    verdict: str  # "PASS" | "NEED_HEAL" | "SUSPECTED_APP_FAILURE" | "APP_BUG" | "FATAL_ERROR"
     reason: str
-    failure_type: Optional[str]  # "selector_mismatch", "timeout", "assertion_failure", "server_error", etc.
+    failure_type: Optional[str]  # "selector_mismatch", "timeout", "assertion_failure", "server_error", "uncaught_app_exception", etc.
     suggested_fix: Optional[str]
 
 
@@ -53,9 +53,39 @@ class HealEvent(TypedDict, total=False):
     fix_plan: str
 
 
+class FailureContext(TypedDict, total=False):
+    expected: str
+    actual: str
+    failed_step: str
+    error: Optional[str]
+    screenshot: Optional[str]
+    trace: Optional[str]
+    console_errors: List[str]
+    network_errors: List[str]
+
+
+class VerificationState(TypedDict, total=False):
+    application_id: str
+    target_url: str
+    target_domain: str
+    failed_test_id: str
+    failure_context: FailureContext
+    discovery_data: Optional[Dict[str, Any]]
+    page_model: Optional[Dict[str, Any]]
+    smoke_test: Optional[Dict[str, Any]]
+    smoke_result: Optional[ExecutionResult]
+    verdict: Optional[str]  # "CONFIRMED_APP_BUG" | "NOT_CONFIRMED"
+    confidence: Optional[float]
+    reason: Optional[str]
+    evidence: List[str]
+    report: Optional[Dict[str, Any]]
+    config: Optional[Dict[str, Any]]
+
+
 class ForgeState(TypedDict, total=False):
     # Target and configuration
     target_url: str
+    target_domain: Optional[str]
     config: Dict[str, Any]
 
     # Discovery & Understanding
@@ -64,8 +94,9 @@ class ForgeState(TypedDict, total=False):
     change_detection: Optional[Dict[str, Any]]
     page_understanding: Optional[Dict[str, Any]]
 
-    # Test Planning
+    # Test Planning & Cron Queue
     test_plan: List[TestScenario]
+    test_queue: List[Dict[str, Any]]  # Queue of tests to execute in Cron loop
     current_test_idx: int
     current_test: Optional[TestScenario]
 
@@ -81,5 +112,15 @@ class ForgeState(TypedDict, total=False):
     healing_history: List[HealEvent]
     healing_plan: Optional[Dict[str, Any]]
 
+    # Standalone Verification Subgraph State & Handoff
+    failure_context: Optional[FailureContext]
+    verification_state: Optional[VerificationState]
+    smoke_result: Optional[ExecutionResult]
+    verification_context: Optional[Dict[str, Any]]
+    verifier_verdict: Optional[str]  # "CONFIRMED_APP_BUG" | "NOT_CONFIRMED"
+    verifier_reason: Optional[str]
+    incident_reports: List[Dict[str, Any]]  # Confirmed bug incident logs
+
     # Aggregate Test Suite Results
     suite_summary: List[Dict[str, Any]]
+

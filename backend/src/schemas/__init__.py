@@ -35,6 +35,16 @@ from .account import (
     AccountUpdate,
     AccountResponse,
 )
+from .test import (
+    TestResponse,
+    TestScheduleUpdate,
+)
+from .onboarding import (
+    OnboardingRequest,
+    OnboardingResponse,
+    OnboardingAccountInput,
+    OnboardingWebsiteInput,
+)
 
 __all__ = [
     "BoundingBox",
@@ -68,4 +78,11 @@ __all__ = [
     "AccountCreate",
     "AccountUpdate",
     "AccountResponse",
+    "TestResponse",
+    "TestScheduleUpdate",
+    "OnboardingRequest",
+    "OnboardingResponse",
+    "OnboardingAccountInput",
+    "OnboardingWebsiteInput",
 ]
+

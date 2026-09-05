@@ -6,6 +6,7 @@ from sqlalchemy import (
     Integer,
     Float,
     DateTime,
+    ForeignKey,
     UniqueConstraint,
     Index,
 )
@@ -82,6 +83,9 @@ class Test(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     test_id: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    website_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("websites.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     domain: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     page_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     title: Mapped[str] = mapped_column(Text, nullable=False)
@@ -94,6 +98,13 @@ class Test(Base):
     test_code: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     language: Mapped[str] = mapped_column(String(20), default="python", nullable=False)
     status: Mapped[str] = mapped_column(String(50), default="active", nullable=False, index=True)
+    
+    # Cron & Scheduling configuration
+    cron_interval_hours: Mapped[Optional[int]] = mapped_column(Integer, default=24, nullable=True, index=True)
+    cron_expression: Mapped[Optional[str]] = mapped_column(String(100), default="0 0 * * *", nullable=True)
+    last_run_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_run_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
     )
@@ -108,6 +119,7 @@ class Test(Base):
         return {
             "id": self.id,
             "test_id": self.test_id,
+            "website_id": self.website_id,
             "domain": self.domain,
             "page_url": self.page_url,
             "title": self.title,
@@ -120,6 +132,10 @@ class Test(Base):
             "test_code": self.test_code,
             "language": self.language,
             "status": self.status,
+            "cron_interval_hours": self.cron_interval_hours,
+            "cron_expression": self.cron_expression,
+            "last_run_at": self.last_run_at.isoformat() if self.last_run_at else None,
+            "next_run_at": self.next_run_at.isoformat() if self.next_run_at else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

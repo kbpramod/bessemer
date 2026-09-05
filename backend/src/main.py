@@ -10,6 +10,8 @@ if str(SRC_DIR) not in sys.path:
 
 from fastapi import FastAPI
 from api.website import route as website_router
+from api.cron import router as cron_router
+from api.onboarding import router as onboarding_router
 from db.migrations import init_db
 
 logger = logging.getLogger("forge.main")
@@ -34,6 +36,11 @@ app = FastAPI(title="Bessemer Backend API", lifespan=lifespan)
 # Include routers
 app.include_router(website_router, prefix="/api")
 app.include_router(website_router)
+app.include_router(onboarding_router, prefix="/api")
+app.include_router(onboarding_router)
+app.include_router(cron_router, prefix="/api")
+
+
 
 
 @app.get("/")

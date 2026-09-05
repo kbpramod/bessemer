@@ -28,3 +28,12 @@ with get_connection() as conn:
         "WHERE table_name LIKE '%alembic%';"
     )).fetchall()
     print("\nALEMBIC TABLES:", alembic_tables)
+
+    test_cols = conn.execute(text(
+        "SELECT column_name, data_type, column_default FROM information_schema.columns "
+        "WHERE table_schema = 'public' AND table_name = 'tests' ORDER BY ordinal_position;"
+    )).fetchall()
+    print("\nCOLUMNS IN 'tests' TABLE:")
+    for c in test_cols:
+        print(f"  - {c[0]}: {c[1]} (default: {c[2]})")
+

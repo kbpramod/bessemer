@@ -49,15 +49,14 @@ Requirements for the generated Playwright Python test:
        test_{test_id}()
 
 3. Grounded Interaction Path Selection:
-   - Use the discovered elements list and grounding_evidence provided in context.
-   - If grounding_evidence mentions elements (e.g. 'element:email', 'element:login_button'), match against discovered element selectors, forge_ids, or roles.
-   - If target viewport is 'mobile' and an interaction is inside a mobile navigation drawer, use the discovered mobile menu toggle button to open it before clicking the navigation link.
-   - Do NOT invent hypothetical selectors. Use the discovered element selectors, forge_ids, or roles.
+   - STRICTLY use ONLY the discovered elements list and links provided in context.
+   - Do NOT assume or invent hypothetical elements (e.g. do not look for role="navigation" or role="button" unless it was discovered).
+   - If grounding_evidence mentions elements, match against discovered element selectors, forge_ids, or text.
    - Prefer `page.get_by_role(...)`, `page.get_by_text(...)`, `page.get_by_label(...)`, `page.locator(...)`.
 
 4. Always assert state transitions and functional outcomes:
-   - Verify page URL / title transition: e.g. `expect(page).to_have_url(re.compile(r"..."))`
-   - Verify expected states specified in expected_outcomes: e.g. `expect(modal).to_be_visible()` or confirmation text.
+   - When verifying page URL / title transition, use flexible regex matching (e.g. `expect(page).to_have_url(re.compile(r".*example.*"))` or regex matching the target domain/path), because external links often redirect (e.g. HTTP 301/302 to subdomains or canonical URLs).
+   - Verify expected states specified in expected_outcomes: e.g. `expect(locator).to_be_visible()` or confirmation text.
 
 5. Output ONLY valid Python code without markdown fences, or wrapped in a single ```python block.
 """
@@ -209,6 +208,18 @@ def builder_node(state: ForgeState) -> Dict[str, Any]:
         ]
         response = llm.invoke(messages)
         code = clean_code(response.content)
+        if is_python:
+            header_lines = []
+            if "import os" not in code:
+                header_lines.append("import os")
+            if "import re" not in code:
+                header_lines.append("import re")
+            if "import sys" not in code:
+                header_lines.append("import sys")
+            if "from playwright.sync_api" not in code:
+                header_lines.append("from playwright.sync_api import sync_playwright, expect")
+            if header_lines:
+                code = "\n".join(header_lines) + "\n\n" + code
     except Exception as e:
         logger.warning(f"[TEST BUILDER] LLM test generation failed ({e}). Generating template {lang_label} script.")
         # Check for first visible navigation link or button to perform interaction
@@ -218,9 +229,10 @@ def builder_node(state: ForgeState) -> Dict[str, Any]:
 
         interaction_block = ""
         if target_sel:
+            target_sel_repr = json.dumps(target_sel)
             interaction_block = f"""
             # Perform journey interaction and verify state transition
-            target_el = page.locator("{target_sel}").first
+            target_el = page.locator({target_sel_repr}).first
             if target_el.is_visible():
                 target_el.click(timeout=10000)
                 page.wait_for_load_state("domcontentloaded", timeout=15000)
@@ -286,19 +298,29 @@ test.describe('[{test_type}] {current_test.get("category", "regression").capital
     try:
         from storage.local import sanitize_domain
         domain = sanitize_domain(target_url)
+        
+        # Resolve website_id if target_url matches a registered website
+        website = ForgeRepository.get_website_by_url(target_url)
+        website_id = website["id"] if website else None
+
+        # Determine cron timings (e.g. 6 hours for SMOKE sanity checks, 24 hours for FLOW journeys)
+        cron_hours = current_test.get("cron_interval_hours") or (6 if test_type == "SMOKE" else 24)
+
         ForgeRepository.save_test(
             test_id=test_id,
             domain=domain,
             page_url=target_url,
             title=current_test.get("title", test_id),
             description=current_test.get("description", ""),
-            category=current_test.get("category", "regression"),
+            category=current_test.get("category", test_type.lower()),
             priority=current_test.get("priority", "medium"),
             steps=current_test.get("steps", []),
             expected_outcome=current_test.get("expected_outcome", ""),
             script_path=str(test_file_path),
             test_code=code,
             language="python" if is_python else "typescript",
+            website_id=website_id,
+            cron_interval_hours=cron_hours,
         )
     except Exception as db_err:
         logger.warning(f"[TEST BUILDER] Could not index test into database: {db_err}")
