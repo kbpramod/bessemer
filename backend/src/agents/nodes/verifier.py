@@ -94,7 +94,8 @@ def verifier_node(state: ForgeState) -> Dict[str, Any]:
             logger.warning(f"[VERIFIER NODE] Could not advance test schedule: {e}")
 
     else:
-        # verdict == "NOT_CONFIRMED"
+        # verdict is "NOT_CONFIRMED" or "INCONCLUSIVE" — in both cases no bug is filed and the
+        # failure is treated as an automation defect to be healed.
         # Check if heal attempts exceeded budget to avoid infinite healing loop
         if heal_attempt >= max_heal_attempts:
             logger.warning(

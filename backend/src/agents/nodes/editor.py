@@ -6,8 +6,9 @@ from typing import Any, Dict, List, Optional
 from langchain_core.messages import SystemMessage, HumanMessage
 from agents.llm import get_chat_model
 from agents.state import ForgeState
+from agents.script_lint import apply_lint
 from db.repository import ForgeRepository
-from storage.local import sanitize_domain, mirror_to_cloud
+from storage.local import sanitize_domain, mirror_to_cloud, save_script_revision
 
 logger = logging.getLogger("forge.agent.editor")
 
@@ -197,7 +198,7 @@ def editor_node(state: ForgeState) -> Dict[str, Any]:
                 content=(
                     f"Please surgically edit and repair the following test script.\n\n"
                     f"File to edit: {test_path.name}\n"
-                    f"Context & Instructions:\n{json.dumps(editor_payload, indent=2)}"
+                    f"Context & Instructions:\n{json.dumps(editor_payload, indent=2, default=str)}"
                 )
             ),
         ]
@@ -211,8 +212,11 @@ def editor_node(state: ForgeState) -> Dict[str, Any]:
         else:
             edited_code = clean_code(response_text)
 
+        if test_path.suffix == ".py":
+            edited_code = apply_lint(edited_code, f"editor/{test_path.name}")
+
     except Exception as e:
-        logger.error(f"[EDITOR] LLM edit failed: {e}. Keeping original code.")
+        logger.error(f"[EDITOR] LLM edit failed: {e}. Keeping original code.", exc_info=True)
         edited_code = existing_code
 
     # Validate with Python AST parsing before saving to prevent corrupting test scripts
@@ -226,6 +230,16 @@ def editor_node(state: ForgeState) -> Dict[str, Any]:
                 f"Rejecting invalid modification and preserving existing working code."
             )
             edited_code = existing_code
+
+    # A heal that changes nothing will fail identically on the next run, burning the whole
+    # heal budget in silence. Make that loud rather than letting the loop spin.
+    edit_applied = edited_code.strip() != existing_code.strip()
+    if not edit_applied:
+        logger.warning(
+            f"[EDITOR] NO CHANGE APPLIED to {test_path.name} (heal_attempt={heal_attempt}). "
+            f"The script is byte-identical, so re-running it will fail exactly the same way. "
+            f"This usually means the edit call itself failed above — fix that rather than retrying."
+        )
 
     # Write edited code back to file
     test_path.parent.mkdir(parents=True, exist_ok=True)
@@ -260,4 +274,5 @@ def editor_node(state: ForgeState) -> Dict[str, Any]:
     return {
         "test_code": edited_code,
         "test_file_path": str(test_path),
+        "edit_applied": edit_applied,
     }

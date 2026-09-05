@@ -77,6 +77,24 @@ def expectation_node(state: ForgeState) -> Dict[str, Any]:
                 "describe": f"heading {h.get('text')!r}",
             })
 
+    # Observed initial state of toggleable inputs. A precondition must never assume the
+    # opposite of what was actually on the page (e.g. asserting "checkbox 1 is checked" when
+    # it loads unchecked makes the test fail before it tests anything).
+    initial_states: List[Dict[str, Any]] = []
+    for i in inputs:
+        if i.get("checked") is None or not i.get("selector"):
+            continue
+        initial_states.append({
+            "selector": i.get("selector"),
+            "type": i.get("type"),
+            "checked_at_load": bool(i.get("checked")),
+            "assert_initial": (
+                f"expect(page.locator({i.get('selector')!r})).to_be_checked()"
+                if i.get("checked")
+                else f"expect(page.locator({i.get('selector')!r})).not_to_be_checked()"
+            ),
+        })
+
     # 2. Destination-independent signals that a state transition happened. These are the
     #    elements present BEFORE the action whose disappearance proves it succeeded.
     state_change_signals: List[Dict[str, Any]] = []
@@ -150,6 +168,7 @@ def expectation_node(state: ForgeState) -> Dict[str, Any]:
     signals: Dict[str, Any] = {
         "observed_page": {"url": page_url, "path": page_path, "title": page.get("title")},
         "assertable_now": assertable_now,
+        "initial_input_states": initial_states,
         "state_change_signals": state_change_signals,
         "known_routes": known_routes,
         "request_endpoints": request_endpoints,

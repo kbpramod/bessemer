@@ -107,8 +107,10 @@ class ForgeState(TypedDict, total=False):
     current_test: Optional[TestScenario]
 
     # Test Scripting & Execution
+    run_id: Optional[str]  # stable id for one execution cycle; keys archived script revisions
     test_code: Optional[str]
     test_file_path: Optional[str]
+    edit_applied: Optional[bool]  # False when a heal produced byte-identical code
     execution_result: Optional[ExecutionResult]
 
     # Analysis & Self-Healing Loop

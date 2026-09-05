@@ -64,15 +64,21 @@ def get_next_test_node(state: ForgeState) -> Dict[str, Any]:
             test_file_path = str(possible_py)
             logger.info(f"[CRON SCHEDULER] Hydrated test script to disk: {test_file_path}")
 
+    # One stable id for this whole execution cycle (including every heal attempt), so archived
+    # script revisions and the resulting test_runs row can be tied together.
+    from datetime import datetime, timezone
+    run_id = f"run_{test_id}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
+
     logger.info(
         f"[CRON SCHEDULER] Next test selected: '{test_id}' "
-        f"({len(queue)} remaining in queue). Script: {test_file_path}"
+        f"({len(queue)} remaining in queue). Run: {run_id}. Script: {test_file_path}"
     )
 
 
     return {
         "test_queue": queue,
         "current_test": next_test,
+        "run_id": run_id,
         "test_file_path": test_file_path,
         "test_code": test_code,
         "target_url": page_url,

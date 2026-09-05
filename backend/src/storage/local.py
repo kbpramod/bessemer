@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
@@ -185,6 +186,52 @@ def save_discovery_result(
     _write_json(root_discovery, data)
 
     return page_path
+
+
+def get_script_history_dir(url_or_domain: str, test_id: str) -> Path:
+    """Revision history for one test: <storage_root>/<domain>/tests/history/<test_id>/"""
+    safe_test_id = re.sub(r"[^\w\.-]", "_", str(test_id)).strip("._") or "unknown_test"
+    history_dir = get_website_storage_dir(url_or_domain) / "tests" / "history" / safe_test_id
+    history_dir.mkdir(parents=True, exist_ok=True)
+    return history_dir
+
+
+def save_script_revision(
+    url_or_domain: str,
+    test_id: str,
+    run_id: str,
+    attempt: int,
+    code: str,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> Path:
+    """
+    Archives one version of a test script as <run_id>_attempt<N>.py, alongside a
+    <run_id>_attempt<N>.json describing why it changed.
+
+    Self-healing overwrites the script in place, so without this the previous version — and
+    the reason it was replaced — is lost. attempt 0 is the code as it stood before any
+    healing, so a run's full lineage reads attempt0 -> attempt1 -> ...
+    """
+    history_dir = get_script_history_dir(url_or_domain, test_id)
+    safe_run_id = re.sub(r"[^\w\.-]", "_", str(run_id)).strip("._") or "run"
+    stem = f"{safe_run_id}_attempt{attempt}"
+
+    script_file = history_dir / f"{stem}.py"
+    with open(script_file, "w", encoding="utf-8") as f:
+        f.write(code)
+    mirror_to_cloud(script_file, code, content_type="text/x-python")
+
+    record = {
+        "test_id": test_id,
+        "run_id": run_id,
+        "attempt": attempt,
+        "saved_at": datetime.now(timezone.utc).isoformat(),
+        "code_bytes": len(code),
+        **(metadata or {}),
+    }
+    _write_json(history_dir / f"{stem}.json", record)
+
+    return script_file
 
 
 def get_planner_storage_dir(url_or_domain: str) -> Path:
