@@ -1,20 +1,71 @@
 import { useState } from 'react'
 import './App.css'
-import Header from './components/Header/Header'
+import Header from './components/Header/Header';
+import Dashboard from './components/Dashboard/Dashboard';
+
 
 function App() {
   const [url, setUrl] = useState('');
   const [username,setUsername]=useState('');
   const [password,setPassword] =useState('');
+  const [showDashboard,setShowDashboard]=useState(false);
+  const [toast, setToast] = useState("");
 
-  const handleStartTesting = () => {
-    
+  const handleStartTesting = async() => {
+    if (!username || !url || !password) {
+    setToast("Please add username, URL and password.");
+
+    setTimeout(() => {
+      setToast("");
+    }, 3000);
+
+    return;
+  }
+
+    const data = {
+    url,
+    username,
+    password,
+  };
+
+  try {
+    const response = await fetch("http://localhost:8000/start-testing", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to start testing");
+    }
+
+    const result = await response.json();
+
+    console.log("Backend response:", result);
+
+    setShowDashboard(true);
+  } catch (error) {
+    console.error(error);
+
+    setToast("Unable to start testing. Please try again.");
+
+    setTimeout(() => {
+      setToast("");
+    }, 3000);
+  }
   }
 
   return (
     <div className="app">
+      {toast && (
+  <div className="toast">
+    ⚠️ {toast}
+  </div>
+)}
       <Header/>
-
+      {!showDashboard?
       <main className="main">
         <section className="hero">
           <h1>AI Testing Agent</h1>
@@ -57,6 +108,9 @@ function App() {
           </div>
         </section>
       </main>
+      :
+      <Dashboard setShowDashboard={setShowDashboard}/>
+}
     </div>
   )
 }
