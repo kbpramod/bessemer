@@ -193,6 +193,20 @@ export function addAccount(
   });
 }
 
+export function runDiscovery(websiteId: number): Promise<{
+  status: string;
+  website_id: number;
+  url: string;
+  message: string;
+}> {
+  return request(`/api/onboarding/${websiteId}/discover`, { method: "POST" });
+}
+
+/** SSE stream of onboarding/discovery progress, consumed with EventSource. */
+export function onboardingEventsUrl(websiteId: number): string {
+  return `${BASE_URL}/api/onboarding/${websiteId}/events`;
+}
+
 export function getTestSchedules(domain?: string): Promise<ScheduleResponse> {
   const query = domain ? `?domain=${encodeURIComponent(domain)}` : "";
   return request<ScheduleResponse>(`/api/cron/schedule${query}`);

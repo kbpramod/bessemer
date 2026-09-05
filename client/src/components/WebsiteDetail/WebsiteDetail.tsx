@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import TestCard from "../TestCard/TestCard";
 import {
@@ -7,7 +7,9 @@ import {
   getOnboardingDetails,
   getTestSchedules,
   getWebsiteRuns,
+  onboardingEventsUrl,
   runCronCycle,
+  runDiscovery,
   type Account,
   type CronRunResult,
   type SuiteResult,
@@ -51,6 +53,10 @@ function WebsiteDetail() {
   const [newAccount, setNewAccount] = useState({ username: "", password: "", role: "user" });
   const [isAddingAccount, setIsAddingAccount] = useState(false);
 
+  const [isDiscovering, setIsDiscovering] = useState(false);
+  const [discoveryEvents, setDiscoveryEvents] = useState<string[]>([]);
+  const streamRef = useRef<EventSource | null>(null);
+
   const loadTestData = useCallback(async (domain: string) => {
     const [schedule, runHistory] = await Promise.all([
       getTestSchedules(domain),
@@ -85,6 +91,45 @@ function WebsiteDetail() {
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  // Close any open progress stream when leaving the page.
+  useEffect(() => () => streamRef.current?.close(), []);
+
+  const handleRunDiscovery = async () => {
+    setIsDiscovering(true);
+    setDiscoveryEvents([]);
+    setError("");
+
+    try {
+      const started = await runDiscovery(id);
+      setDiscoveryEvents([started.message]);
+
+      streamRef.current?.close();
+      const stream = new EventSource(onboardingEventsUrl(id));
+      streamRef.current = stream;
+
+      stream.onmessage = (event) => {
+        setDiscoveryEvents((prev) => [...prev, event.data]);
+
+        // The graph publishes a terminal message when it finishes either way.
+        if (event.data.includes("completed") || event.data.includes("failed")) {
+          stream.close();
+          streamRef.current = null;
+          setIsDiscovering(false);
+          loadAll();
+        }
+      };
+
+      stream.onerror = () => {
+        stream.close();
+        streamRef.current = null;
+        setIsDiscovering(false);
+      };
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to start discovery.");
+      setIsDiscovering(false);
+    }
+  };
 
   const handleRunNow = async () => {
     if (!website) return;
@@ -165,10 +210,37 @@ function WebsiteDetail() {
           </p>
         </div>
 
-        <button className="save-prompt-button" onClick={handleRunNow} disabled={isRunning}>
-          {isRunning ? "Running..." : "Run Due Tests"}
-        </button>
+        <div className="detail-actions">
+          <button className="prompt-button" onClick={() => loadAll()}>
+            Refresh
+          </button>
+
+          <button className="prompt-button" onClick={handleRunDiscovery} disabled={isDiscovering}>
+            {isDiscovering ? "Discovering..." : "Run Discovery"}
+          </button>
+
+          <button className="save-prompt-button" onClick={handleRunNow} disabled={isRunning}>
+            {isRunning ? "Running..." : "Run Due Tests"}
+          </button>
+        </div>
       </div>
+
+      {discoveryEvents.length > 0 && (
+        <div className="discovery-log">
+          <div className="discovery-log-header">
+            <strong>Discovery progress</strong>
+            <button className="link-button" onClick={() => setDiscoveryEvents([])}>clear</button>
+          </div>
+
+          <ul>
+            {discoveryEvents.map((event, index) => (
+              <li key={`${index}-${event}`}>{event}</li>
+            ))}
+          </ul>
+
+          {isDiscovering && <p className="discovery-hint">Discovery runs in the background; this can take a few minutes.</p>}
+        </div>
+      )}
 
       <div className="tab-bar">
         {TABS.map(({ key, label }) => (

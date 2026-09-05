@@ -16,6 +16,22 @@ logger = logging.getLogger("forge.api.onboarding")
 router = APIRouter(prefix="/onboarding", tags=["Onboarding"])
 
 
+def run_onboarding_graph(state: Dict[str, Any]) -> None:
+    """Executes the onboarding graph (discover -> understanding -> planner -> builder),
+    publishing progress to the website's event stream."""
+    from agents.onboarding_graph import create_onboarding_graph
+
+    website_id = state["website_id"]
+    graph = create_onboarding_graph()
+    publish_event(website_id, "Onboarding graph started")
+    try:
+        graph.invoke(state)
+        publish_event(website_id, "Onboarding graph completed")
+    except Exception as e:
+        publish_event(website_id, f"Onboarding graph failed: {e}")
+        logger.error(f"[ONBOARDING API] Graph error for website {website_id}: {e}")
+
+
 @router.post("/", response_model=OnboardingResponse, status_code=status.HTTP_201_CREATED)
 def onboard_website_and_accounts(request: OnboardingRequest, background_tasks: BackgroundTasks):
     """
@@ -80,25 +96,15 @@ def onboard_website_and_accounts(request: OnboardingRequest, background_tasks: B
     # Fetch updated list of all accounts for this website
     all_accounts = ForgeRepository.list_accounts_for_website(website_id=website_id)
 
-        # Prepare initial state for onboarding graph
-    initial_state = {
-        "target_url": target_url,
-        "website_id": website_id,
-        "config": {},
-    }
     # Schedule onboarding graph execution in background
-    def run_onboarding_graph(state: dict):
-        from agents.onboarding_graph import create_onboarding_graph
-        graph = create_onboarding_graph()
-        publish_event(state["website_id"], "Onboarding graph started")
-        try:
-            final_state = graph.invoke(state)
-            publish_event(state["website_id"], "Onboarding graph completed")
-            # Optionally persist final_state info here
-        except Exception as e:
-            publish_event(state["website_id"], f"Onboarding graph failed: {e}")
-            logger.error(f"[ONBOARDING API] Graph error for website {state['website_id']}: {e}")
-    background_tasks.add_task(run_onboarding_graph, initial_state)
+    background_tasks.add_task(
+        run_onboarding_graph,
+        {
+            "target_url": target_url,
+            "website_id": website_id,
+            "config": {},
+        },
+    )
 
     return OnboardingResponse(
         status="success",
@@ -121,6 +127,36 @@ def get_onboarding_details(website_id: int):
         "accounts": [AccountResponse.model_validate(a) for a in accounts],
         "account_count": len(accounts),
     }
+
+@router.post("/{website_id}/discover", status_code=status.HTTP_202_ACCEPTED)
+def rerun_discovery(website_id: int, background_tasks: BackgroundTasks):
+    """Re-runs the onboarding graph for an already registered website.
+
+    Use this when onboarding was missed at registration time, or to refresh
+    discovered pages, elements and generated tests. Progress is published to
+    the website's `/onboarding/{website_id}/events` stream.
+    """
+    website = ForgeRepository.get_website_by_id(website_id)
+    if not website:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Website ID {website_id} not found.")
+
+    logger.info(f"[ONBOARDING API] Re-running discovery for website ID={website_id} ({website['url']})")
+    background_tasks.add_task(
+        run_onboarding_graph,
+        {
+            "target_url": website["url"],
+            "website_id": website_id,
+            "config": {},
+        },
+    )
+
+    return {
+        "status": "started",
+        "website_id": website_id,
+        "url": website["url"],
+        "message": f"Discovery re-run started for {website['domain']}.",
+    }
+
 
 # SSE streaming endpoint for onboarding events
 @router.get("/{website_id}/events", response_model=None)

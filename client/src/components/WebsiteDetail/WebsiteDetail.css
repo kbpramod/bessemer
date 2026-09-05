@@ -17,6 +17,55 @@
   font-size: 26px;
 }
 
+.detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.detail-actions .save-prompt-button {
+  margin-top: 0;
+}
+
+/* Discovery progress log */
+
+.discovery-log {
+  padding: 14px 16px;
+  margin-bottom: 20px;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  background: #fafafa;
+}
+
+.discovery-log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.discovery-log ul {
+  margin: 0;
+  padding-left: 18px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.discovery-log li {
+  font-size: 13px;
+  line-height: 1.7;
+  color: #444;
+  word-break: break-word;
+}
+
+.discovery-hint {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: #777;
+}
+
 /* Tabs */
 
 .tab-bar {
