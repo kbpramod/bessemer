@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Dict
 from agents.state import VerificationState
 from db.repository import ForgeRepository
-from storage.local import get_website_storage_dir, sanitize_domain
+from storage.local import get_website_storage_dir, sanitize_domain, mirror_to_cloud
 
 logger = logging.getLogger("forge.verification.report")
 
@@ -54,7 +54,9 @@ def report_node(state: VerificationState) -> Dict[str, Any]:
         reports_dir = site_storage / "reports"
         reports_dir.mkdir(parents=True, exist_ok=True)
         report_file = reports_dir / f"{incident_id}.json"
-        report_file.write_text(json.dumps(report_data, indent=2), encoding="utf-8")
+        report_text = json.dumps(report_data, indent=2)
+        report_file.write_text(report_text, encoding="utf-8")
+        mirror_to_cloud(report_file, report_text, content_type="application/json")
         logger.info(f"[VERIFICATION - REPORT] Bug report saved to: {report_file}")
     except Exception as err:
         logger.warning(f"[VERIFICATION - REPORT] Could not save bug report to disk: {err}")

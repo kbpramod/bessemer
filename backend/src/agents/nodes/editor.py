@@ -7,7 +7,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from agents.llm import get_chat_model
 from agents.state import ForgeState
 from db.repository import ForgeRepository
-from storage.local import sanitize_domain
+from storage.local import sanitize_domain, mirror_to_cloud
 
 logger = logging.getLogger("forge.agent.editor")
 
@@ -19,12 +19,30 @@ You operate like a professional coding assistant:
 2. EDIT the code to fix the root cause identified in the diagnosis and fix plan.
 3. PRESERVE all existing functionality that already works (navigation, setup, assertions that were not flagged).
 4. DO NOT rewrite the script from scratch. Keep the existing function name, imports, and structure.
+   EXCEPTION — when the healing plan's `failure_class` is "wrong_expectation", the flagged
+   assertion is itself the bug: DELETE or REPLACE it as instructed. Do not try to satisfy it
+   with longer waits, `wait_for_selector`, or a looser regex — the element/route being asserted
+   does not exist in this application, so waiting for it can never succeed. Rule 3 does not
+   protect an assertion the plan identified as wrong.
 5. If locator updates are needed, use resilient Playwright locators:
    - In Python: page.get_by_role(...), page.get_by_text(...), page.get_by_label(...), page.get_by_placeholder(...)
    - In TypeScript: page.getByRole(...), page.getByText(...), page.getByLabel(...), page.getByPlaceholder(...)
 6. Ensure all required imports (e.g. `re`, `expect`, `sync_playwright`) remain intact.
 7. Avoid strict mode violations: if multiple elements share text/roles across responsive viewports, use specific ID selectors (e.g. `page.locator('#id')`) or `.first` (e.g. `page.get_by_role('link', name='...').first`).
-8. Return ONLY the complete, edited script code without markdown fences, or wrapped in a single ```python or ```typescript code fence.
+8. NEVER INTRODUCE A GUESSED DESTINATION URL. If the failure is "expected URL to be
+   /dashboard" (or any route the app never actually navigates to), the correct repair is to
+   REMOVE that assertion, not to tweak the pattern. Replace it with a signal that does not
+   depend on knowing the destination: the login form/password field is gone, a logout or
+   account control is visible, the URL simply differs from the starting URL, or the submit
+   response returned a non-error status. Only keep a concrete path if it appears in the
+   discovered elements/links.
+9. REAL CREDENTIALS: `available_accounts` in the context lists the real registered test
+   accounts for this site (username, password, role). If the script signs in, it MUST use
+   those exact values literally — never replace them with placeholders like
+   "user@example.com" or "your_password", and never remove working credentials while
+   repairing something else. Only if that list is empty may you read credentials from
+   environment variables.
+10. Return ONLY the complete, edited script code without markdown fences, or wrapped in a single ```python or ```typescript code fence.
 """
 
 
@@ -108,8 +126,12 @@ def editor_node(state: ForgeState) -> Dict[str, Any]:
     diagnosis = healing_plan.get("diagnosis", "Test step or assertion failed.")
     fix_plan = healing_plan.get("fix_plan", "Repair failing locator or wait condition.")
     preserve = healing_plan.get("preserve", "Keep all existing setup and working assertions.")
+    failure_class = healing_plan.get("failure_class", "automation_defect")
 
-    logger.info(f"[EDITOR] Surgically editing test script: {test_path.name} (heal_attempt={heal_attempt})")
+    logger.info(
+        f"[EDITOR] Surgically editing test script: {test_path.name} "
+        f"(heal_attempt={heal_attempt}, failure_class={failure_class})"
+    )
 
     # Discovered elements for locator reference
     elements_sample = {
@@ -134,9 +156,23 @@ def editor_node(state: ForgeState) -> Dict[str, Any]:
         ]
     }
 
+    # Real registered test accounts for THIS website, so a repair never swaps working
+    # credentials for invented placeholders (a common cause of a "fixed" test failing
+    # again at login), and never pulls in another site's accounts.
+    try:
+        scoped_website_id = state.get("website_id") or current_test.get("website_id")
+        if scoped_website_id:
+            available_accounts = ForgeRepository.get_credentials_for_website(int(scoped_website_id))
+        else:
+            available_accounts = ForgeRepository.get_credentials_for_url(state.get("target_url") or "")
+    except Exception as acc_err:
+        logger.warning(f"[EDITOR] Could not load accounts for {state.get('target_url')}: {acc_err}")
+        available_accounts = []
+
     editor_payload = {
         "file_path": str(test_path),
         "target_url": state.get("target_url"),
+        "available_accounts": available_accounts,
         "test_scenario": current_test,
         "existing_code": existing_code,
         "last_execution_error": {
@@ -145,6 +181,7 @@ def editor_node(state: ForgeState) -> Dict[str, Any]:
             "stdout": (exec_res.get("stdout") or "")[-1000:],
         },
         "healing_plan": {
+            "failure_class": failure_class,
             "diagnosis": diagnosis,
             "fix_plan": fix_plan,
             "preserve": preserve,
@@ -194,6 +231,7 @@ def editor_node(state: ForgeState) -> Dict[str, Any]:
     test_path.parent.mkdir(parents=True, exist_ok=True)
     with open(test_path, "w", encoding="utf-8") as f:
         f.write(edited_code)
+    mirror_to_cloud(test_path, edited_code, content_type="text/x-python" if test_path.suffix == ".py" else "text/plain")
 
     logger.info(f"[EDITOR] Successfully saved edited test script to: {test_path}")
 

@@ -62,6 +62,69 @@ class ForgeRepository:
             return dict(row) if row else None
 
     @staticmethod
+    def get_credentials_for_website(website_id: int) -> List[Dict[str, Any]]:
+        """
+        Returns active accounts for exactly one website, INCLUDING passwords, so the test
+        builder/editor can write login flows against real credentials instead of inventing
+        placeholders.
+
+        Unlike list_accounts_for_website(), this exposes the password column — it is for
+        internal agent use only and must never be returned from an API response.
+        """
+        sql = """
+        SELECT username, password, role, credentials
+        FROM accounts
+        WHERE website_id = :website_id AND is_active = TRUE
+        ORDER BY id ASC;
+        """
+        with get_connection() as conn:
+            rows = conn.execute(text(sql), {"website_id": website_id}).mappings().all()
+            return [dict(r) for r in rows]
+
+    @staticmethod
+    def resolve_website_id(url: str) -> Optional[int]:
+        """
+        Resolves `url` to exactly ONE website id: an exact URL match if there is one,
+        otherwise the oldest website on the same domain.
+
+        Deliberately returns a single id rather than matching a whole domain, because
+        several websites can share a domain (e.g. localhost:5173 and localhost:8000) and
+        their accounts must never be mixed together.
+        """
+        from storage.local import sanitize_domain
+        domain = sanitize_domain(url)
+        sql = """
+        SELECT id FROM websites
+        WHERE url = :url OR domain = :domain
+        ORDER BY (url = :url) DESC, id ASC
+        LIMIT 1;
+        """
+        with get_connection() as conn:
+            row = conn.execute(text(sql), {"url": url, "domain": domain}).mappings().first()
+            return row["id"] if row else None
+
+    @staticmethod
+    def get_credentials_for_url(url: str) -> List[Dict[str, Any]]:
+        """
+        Convenience wrapper: resolves `url` to a single website, then returns that one
+        website's active accounts. Used when a website_id isn't already in hand (e.g. a
+        page discovered behind a login, which has no website row of its own and inherits
+        its parent site's credentials).
+        """
+        website_id = ForgeRepository.resolve_website_id(url)
+        if website_id is None:
+            return []
+        return ForgeRepository.get_credentials_for_website(website_id)
+
+    @staticmethod
+    def has_test_for_page(page_url: str) -> bool:
+        """Whether any test already exists for this exact page URL — used to avoid
+        re-onboarding a page (e.g. a post-login dashboard) that's already been discovered."""
+        sql = "SELECT EXISTS(SELECT 1 FROM tests WHERE page_url = :page_url) AS found;"
+        with get_connection() as conn:
+            return bool(conn.execute(text(sql), {"page_url": page_url}).scalar())
+
+    @staticmethod
     def list_websites(active_only: bool = False) -> List[Dict[str, Any]]:
         if active_only:
             sql = "SELECT id, url, domain, is_active, created_at, updated_at, last_discovered_at FROM websites WHERE is_active = TRUE ORDER BY id ASC;"

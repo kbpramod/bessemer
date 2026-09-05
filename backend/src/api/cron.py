@@ -19,18 +19,18 @@ router = APIRouter(prefix="/cron", tags=["Cron Scheduler"])
 
 class CronRunRequest(BaseModel):
     domain: Optional[str] = None
-    headless: bool = True
+    headless: bool = False
     limit: int = 50
 
 
 class RunTestRequest(BaseModel):
-    headless: bool = True
+    headless: bool = False
 
 
 class DaemonStartRequest(BaseModel):
     interval_seconds: int = 60
     domain: Optional[str] = None
-    headless: bool = True
+    headless: bool = False
 
 
 @router.get("/due")

@@ -1,23 +1,56 @@
 import json
+import logging
 import os
 import re
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 from dotenv import load_dotenv
 
+from storage.supabase_storage import upload_text, is_configured as _cloud_configured
+
 load_dotenv()
+
+logger = logging.getLogger("forge.storage.local")
 
 
 def _get_storage_root() -> Path:
-    """Returns the base storage directory configured in FORGE_STORAGE_ROOT or default."""
-    root = os.getenv("FORGE_STORAGE_ROOT")
-    if root:
-        path = Path(root)
-    else:
-        path = Path("storage").resolve()
+    """
+    Returns the local scratch directory used to materialize files that need a real
+    filesystem path (e.g. a Playwright subprocess executing a test script).
+
+    This is a disposable cache, not durable storage — every write that matters is
+    also mirrored to Supabase Storage via mirror_to_cloud(). Defaults to the OS temp
+    directory; override with FORGE_CACHE_ROOT if a fixed local path is useful for
+    debugging.
+    """
+    root = os.getenv("FORGE_CACHE_ROOT")
+    path = Path(root) if root else Path(tempfile.gettempdir()) / "forge-cache"
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def _relative_key(path: Path) -> str:
+    """Maps a local cache path back to the storage key it mirrors in Supabase,
+    e.g. <cache_root>/example.com/tests/flow_login.py -> example.com/tests/flow_login.py"""
+    try:
+        rel = path.resolve().relative_to(_get_storage_root().resolve())
+    except ValueError:
+        rel = Path(path.name)
+    return rel.as_posix()
+
+
+def mirror_to_cloud(path: Path, content: str, content_type: str = "text/plain; charset=utf-8") -> None:
+    """
+    Best-effort mirror of a locally-cached artifact to Supabase Storage, the durable
+    copy. Never raises — a Supabase hiccup should not break discovery/planning/build.
+    """
+    if not _cloud_configured():
+        return
+    key = _relative_key(path)
+    if not upload_text(key, content, content_type=content_type):
+        logger.warning(f"[LOCAL STORAGE] Could not mirror '{key}' to Supabase Storage.")
 
 
 def sanitize_domain(url_or_domain: str) -> str:
@@ -74,6 +107,14 @@ def get_pages_storage_dir(url_or_domain: str) -> Path:
     return pages_dir
 
 
+def _write_json(path: Path, data: Any) -> None:
+    """Writes JSON to the local cache and mirrors it to Supabase Storage."""
+    text = json.dumps(data, indent=2, ensure_ascii=False)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(text)
+    mirror_to_cloud(path, text, content_type="application/json")
+
+
 def get_page_folder(url: str, custom_slug: Optional[str] = None) -> Path:
     """
     Returns the dedicated folder for a specific page:
@@ -99,8 +140,7 @@ def save_page_discovery(
     """
     page_folder = get_page_folder(url, custom_slug=custom_slug)
     target_file = page_folder / filename
-    with open(target_file, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    _write_json(target_file, data)
     return target_file
 
 
@@ -116,14 +156,12 @@ def save_site_discovery(
     """
     disc_dir = get_discovery_storage_dir(url_or_domain)
     target_file = disc_dir / filename
-    with open(target_file, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-    
+    _write_json(target_file, data)
+
     # Also save as site_discovery.json for convenience
     if filename != "site_discovery.json":
         sec_file = disc_dir / "site_discovery.json"
-        with open(sec_file, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
+        _write_json(sec_file, data)
 
     return target_file
 
@@ -144,8 +182,7 @@ def save_discovery_result(
     # Also save root discovery.json snapshot
     disc_dir = get_discovery_storage_dir(url)
     root_discovery = disc_dir / "discovery.json"
-    with open(root_discovery, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    _write_json(root_discovery, data)
 
     return page_path
 
@@ -178,8 +215,7 @@ def save_hypotheses(
 
     # Save complete hypotheses array
     main_file = planner_dir / filename
-    with open(main_file, "w", encoding="utf-8") as f:
-        json.dump(hypotheses, f, indent=2, ensure_ascii=False)
+    _write_json(main_file, hypotheses)
 
     smoke_tests = []
     flow_tests = []
@@ -194,8 +230,7 @@ def save_hypotheses(
             flow_tests.append(item)
             item_file = flows_dir / f"{test_id}.json"
 
-        with open(item_file, "w", encoding="utf-8") as f:
-            json.dump(item, f, indent=2, ensure_ascii=False)
+        _write_json(item_file, item)
 
     # Summary metadata
     summary = {
@@ -206,7 +241,6 @@ def save_hypotheses(
         "smoke_ids": [t.get("id") for t in smoke_tests],
         "flow_ids": [t.get("id") for t in flow_tests],
     }
-    with open(planner_dir / "summary.json", "w", encoding="utf-8") as f:
-        json.dump(summary, f, indent=2, ensure_ascii=False)
+    _write_json(planner_dir / "summary.json", summary)
 
     return main_file

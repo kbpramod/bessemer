@@ -6,7 +6,7 @@ from typing import Any, Dict
 from agents.llm import get_chat_model
 from agents.state import ForgeState
 from langchain_core.messages import SystemMessage, HumanMessage
-from storage.local import get_website_storage_dir
+from storage.local import get_website_storage_dir, mirror_to_cloud
 from db.repository import ForgeRepository
 from schemas.discovery import FIXED_VIEWPORTS
 
@@ -28,7 +28,7 @@ Requirements for the generated Playwright Python test:
 
 2. Structure inside a callable test function configuring the specified target_viewport:
    def test_{test_id}():
-       headless = os.getenv("HEADLESS", "true").lower() in (
+       headless = os.getenv("HEADLESS", "false").lower() in (
            "true",
            "1",
            "yes",
@@ -40,6 +40,8 @@ Requirements for the generated Playwright Python test:
            try:
                page.goto('{target_url}', wait_until='domcontentloaded', timeout=30000)
                # user actions, state transitions, and functional assertions here
+               print(f"[FINAL_URL] {page.url}")
+               context.storage_state(path=os.path.splitext(os.path.abspath(__file__))[0] + ".storage_state.json")
                print("[TEST PASSED] {scenario_title}")
            finally:
                context.close()
@@ -55,10 +57,63 @@ Requirements for the generated Playwright Python test:
    - Prefer `page.get_by_role(...)`, `page.get_by_text(...)`, `page.get_by_label(...)`, `page.locator(...)`.
 
 4. Always assert state transitions and functional outcomes:
-   - When verifying page URL / title transition, use flexible regex matching (e.g. `expect(page).to_have_url(re.compile(r".*example.*"))` or regex matching the target domain/path), because external links often redirect (e.g. HTTP 301/302 to subdomains or canonical URLs).
+   - ASSERT ONLY WHAT `assertable_signals` SUPPORTS. That block is derived from what the
+     browser actually observed on this page:
+       * `state_change_signals` — elements present before the action whose disappearance
+         proves success. This is the preferred way to verify a transition.
+       * `known_routes` — the only routes that exist; never assert a path outside it.
+       * `request_endpoints` — real form actions, for asserting response status.
+       * `unverified` — explicitly unknowable; never assert anything depending on these.
+       * `recommended_success_assertions` / `recommended_failure_assertions` — ready-made
+         grounded assertions. Prefer these verbatim over anything you invent.
    - Verify expected states specified in expected_outcomes: e.g. `expect(locator).to_be_visible()` or confirmation text.
+   - NEVER assert a hardcoded destination path you were not given. You do not know where the
+     app redirects after login/submit. PROHIBITED unless that exact route appears in the
+     discovered links or the test scenario:
+         expect(page).to_have_url(re.compile(r".*dashboard.*"))   # invented -> false failure
+     Asserting a guessed route makes a healthy application look broken.
+   - To verify a successful transition without knowing the destination, prefer:
+       a) the previous state is gone:
+              expect(page.locator("#password")).to_have_count(0)
+       b) a success/authenticated indicator appeared:
+              expect(page.get_by_role("button", name=re.compile("logout|sign out", re.I))).to_be_visible()
+       c) the URL merely CHANGED from where you started:
+              start_url = page.url          # capture before the action
+              ...
+              assert page.url != start_url, f"URL did not change after submit: {page.url}"
+       d) the underlying request succeeded — capture the response instead of guessing a route:
+              with page.expect_response(lambda r: r.request.method == "POST") as resp_info:
+                  page.click("#login-button")
+              assert resp_info.value.status < 400, f"Request failed: {resp_info.value.status}"
+   - When you DO assert a URL that was actually provided, still use flexible regex matching
+     (e.g. `expect(page).to_have_url(re.compile(r".*example.*"))`), because sites often
+     redirect (HTTP 301/302 to subdomains or canonical URLs).
+   - For NEGATIVE tests (wrong password, invalid input), assert the opposite: an error is
+     visible AND the user is still on the starting URL / the form is still present.
 
 5. Output ONLY valid Python code without markdown fences, or wrapped in a single ```python block.
+
+6. Immediately before the final "[TEST PASSED]" print, and while the browser is still open,
+   always do BOTH of these (in this order):
+     print(f"[FINAL_URL] {{page.url}}")
+     context.storage_state(path=os.path.splitext(os.path.abspath(__file__))[0] + ".storage_state.json")
+
+   This is required even if the journey never navigates away from target_url. The platform
+   uses the printed URL to detect when a passing test reached a new page (e.g. a login flow
+   landing on a dashboard) so it can automatically onboard and generate tests for that page.
+   The saved storage_state carries the logged-in session forward — a page behind a login can
+   only be discovered afterwards by reusing it, because this browser closes when the test ends.
+   Both calls MUST happen inside the try block, before the finally that closes the context.
+
+7. REAL CREDENTIALS:
+   `available_accounts` in the context lists the real, registered test accounts for this site
+   (username, password, role). Whenever the journey needs to sign in or act as a specific role:
+   - Use these exact values literally in the script. NEVER invent placeholders like
+     "user@example.com", "testuser", "your_password", and never emit TODO/fill-me-in comments.
+   - Pick the account whose `role` best fits the scenario (e.g. an "admin" role for admin
+     journeys); otherwise use the first account listed.
+   - If `available_accounts` is empty, only then fall back to reading credentials from
+     environment variables (e.g. os.getenv("TEST_USERNAME")).
 """
 
 BUILDER_TS_SYSTEM_PROMPT = """You are an elite Playwright TypeScript Automation Engineer.
@@ -83,6 +138,16 @@ Requirements for the generated Playwright test:
 5. Handle navigation cleanly:
    - `await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });`
 6. Output ONLY valid TypeScript code without markdown fences, or wrapped in a single ```typescript block.
+7. Immediately before the test finishes successfully, always log the page the browser ended
+   up on: `console.log(`[FINAL_URL] ${page.url()}`);`. This is required even if the journey
+   never navigates away from the starting URL — the platform uses this line to detect when a
+   passing test reached a new page (e.g. a login flow landing on a dashboard) so it can
+   automatically onboard and generate tests for that page too.
+8. REAL CREDENTIALS: `available_accounts` in the context lists the real registered test
+   accounts for this site (username, password, role). Use those exact values literally for any
+   sign-in step — never invent placeholders like "user@example.com" or "your_password". Pick
+   the account whose `role` fits the scenario, else the first one. Only if the list is empty,
+   fall back to environment variables.
 
 If HEALING information is provided, carefully inspect the previous failure error, the diagnosis, and the fix plan to adjust locators, wait conditions, or assertions.
 """
@@ -176,8 +241,31 @@ def builder_node(state: ForgeState) -> Dict[str, Any]:
     expected = current_test.get("expected") or [current_test.get("expected_outcome", "")]
     evidence = current_test.get("evidence", [])
 
+    # Real registered test accounts for THIS website, so login/authenticated journeys are
+    # written against credentials that actually work instead of invented placeholders.
+    # Prefer an explicit website_id (from the onboarding state, or the test's own DB row)
+    # so accounts are never mixed in from another site that happens to share a domain.
+    try:
+        scoped_website_id = state.get("website_id") or current_test.get("website_id")
+        if scoped_website_id:
+            available_accounts = ForgeRepository.get_credentials_for_website(int(scoped_website_id))
+        else:
+            available_accounts = ForgeRepository.get_credentials_for_url(target_url)
+        if available_accounts:
+            logger.info(
+                f"[TEST BUILDER] Supplying {len(available_accounts)} real account(s) as context: "
+                f"{[a.get('username') for a in available_accounts]}"
+            )
+    except Exception as acc_err:
+        logger.warning(f"[TEST BUILDER] Could not load accounts for {target_url}: {acc_err}")
+        available_accounts = []
+
     builder_payload: Dict[str, Any] = {
         "target_url": target_url,
+        "available_accounts": available_accounts,
+        # Grounded assertion catalogue from the expectation node — what can actually be
+        # asserted on this page, and what is explicitly unknowable.
+        "assertable_signals": state.get("assertable_signals") or {},
         "test_scenario": current_test,
         "test_type": test_type,
         "intent": intent,
@@ -246,7 +334,7 @@ from playwright.sync_api import sync_playwright, expect
 
 
 def test_{test_id_clean}():
-    headless = os.getenv("HEADLESS", "true").lower() in ("true", "1", "yes")
+    headless = os.getenv("HEADLESS", "false").lower() in ("true", "1", "yes")
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=headless)
         context = browser.new_context(viewport={{"width": {vp_dims['width']}, "height": {vp_dims['height']}}})
@@ -254,6 +342,8 @@ def test_{test_id_clean}():
         try:
             page.goto('{target_url}', wait_until='domcontentloaded', timeout=30000)
             expect(page).to_have_title(re.compile(r".+")){interaction_block}
+            print(f"[FINAL_URL] {{page.url}}")
+            context.storage_state(path=os.path.splitext(os.path.abspath(__file__))[0] + ".storage_state.json")
             print('[TEST PASSED] [{test_type}] Successfully completed journey on {target_url}')
         finally:
             context.close()
@@ -270,6 +360,7 @@ test.describe('[{test_type}] {current_test.get("category", "regression").capital
   test('{current_test.get("id", "test_smoke")}', async ({{ page }}) => {{
     await page.goto('{target_url}', {{ waitUntil: 'domcontentloaded', timeout: 30000 }});
     await expect(page).toHaveTitle(/.+/);
+    console.log(`[FINAL_URL] ${{page.url()}}`);
     console.log('[TEST PASSED] [{test_type}] Successfully loaded {target_url}');
   }});
 }});
@@ -285,12 +376,15 @@ test.describe('[{test_type}] {current_test.get("category", "regression").capital
 
     with open(test_file_path, "w", encoding="utf-8") as f:
         f.write(code)
+    mirror_to_cloud(test_file_path, code, content_type="text/x-python" if is_python else "text/plain")
 
     # Also organize into category subdirectory (tests/smoke/ or tests/flows/)
     category_dir = tests_dir / ("smoke" if test_type == "SMOKE" else "flows")
     category_dir.mkdir(parents=True, exist_ok=True)
-    with open(category_dir / f"{test_id}{ext}", "w", encoding="utf-8") as f:
+    category_file = category_dir / f"{test_id}{ext}"
+    with open(category_file, "w", encoding="utf-8") as f:
         f.write(code)
+    mirror_to_cloud(category_file, code, content_type="text/x-python" if is_python else "text/plain")
 
     logger.info(f"[TEST BUILDER] Saved {lang_label} [{test_type}] test script to: {test_file_path}")
 

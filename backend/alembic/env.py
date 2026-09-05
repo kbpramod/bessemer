@@ -19,9 +19,14 @@ from models import Base  # noqa: E402
 # 3. Alembic Config object
 config = context.config
 
-# Interpret the config file for Python logging
+# Interpret the config file for Python logging.
+# disable_existing_loggers=False is required here: this runs on every app startup
+# (init_db() -> command.upgrade() -> this file), and fileConfig()'s default of True
+# silently disables every logger not explicitly listed in alembic.ini's [loggers]
+# section — including every forge.* pipeline logger — wiping out the app's own
+# logging setup a few milliseconds after it runs.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # 4. Set SQLAlchemy target metadata
 target_metadata = Base.metadata

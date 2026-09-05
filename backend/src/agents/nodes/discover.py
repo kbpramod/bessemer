@@ -57,6 +57,7 @@ def discover_node(state: ForgeState) -> Dict[str, Any]:
         timeout_ms=timeout_ms,
         settle_ms=settle_ms,
         save_to_storage=True,
+        storage_state=config.get("storage_state_path"),
     )
 
     data_dict = result.model_dump()

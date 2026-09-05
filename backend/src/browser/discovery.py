@@ -713,18 +713,29 @@ async def discover_page(
     viewport_height: int = 800,
     timeout_ms: int = 30000,
     settle_ms: int = 1500,
-    save_to_storage: bool = False
+    save_to_storage: bool = False,
+    storage_state: Optional[str] = None
 ) -> DiscoveryResult:
     """
     Stand-alone async single page discovery.
+
+    `storage_state` is a path to a Playwright storage state file (cookies + localStorage)
+    saved by a passing test before its browser closed. Pages only reachable behind a login
+    (e.g. a dashboard) can only be discovered by reusing that authenticated session —
+    without it, the fresh context would just be redirected back to the login page.
     """
     run_headless = is_headless(override=headless)
+    context_kwargs = {
+        "viewport": {"width": viewport_width, "height": viewport_height},
+        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    }
+    if storage_state and Path(storage_state).exists():
+        context_kwargs["storage_state"] = storage_state
+        logger.info(f"[DISCOVERY] Reusing authenticated session from: {storage_state}")
+
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=run_headless)
-        context = await browser.new_context(
-            viewport={"width": viewport_width, "height": viewport_height},
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        )
+        context = await browser.new_context(**context_kwargs)
         page = await context.new_page()
         result = await discover_page_in_context(
             page=page,
@@ -748,7 +759,8 @@ def discover_page_sync(
     viewport_height: int = 800,
     timeout_ms: int = 30000,
     settle_ms: int = 1500,
-    save_to_storage: bool = False
+    save_to_storage: bool = False,
+    storage_state: Optional[str] = None
 ) -> DiscoveryResult:
     """Synchronous single-page discovery."""
     return asyncio.run(discover_page(
@@ -759,7 +771,8 @@ def discover_page_sync(
         viewport_height=viewport_height,
         timeout_ms=timeout_ms,
         settle_ms=settle_ms,
-        save_to_storage=save_to_storage
+        save_to_storage=save_to_storage,
+        storage_state=storage_state
     ))
 
 

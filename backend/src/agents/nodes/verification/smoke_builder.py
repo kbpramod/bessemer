@@ -5,7 +5,7 @@ from typing import Any, Dict
 from agents.llm import get_chat_model
 from agents.state import VerificationState
 from langchain_core.messages import HumanMessage, SystemMessage
-from storage.local import get_website_storage_dir, sanitize_domain
+from storage.local import get_website_storage_dir, sanitize_domain, mirror_to_cloud
 
 logger = logging.getLogger("forge.verification.smoke_builder")
 
@@ -93,13 +93,15 @@ def build_smoke_verification_test_node(state: VerificationState) -> Dict[str, An
 
     # Fallback minimal verification script if LLM did not generate
     if not code or "sync_playwright" not in code:
-        code = f"""import sys
+        code = f"""import os
+import sys
 from playwright.sync_api import sync_playwright, expect
 
 def test_minimal_smoke_verify():
     print("[VERIFY_SMOKE] Starting minimal smoke probe for {failed_test_id}")
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        headless = os.getenv("HEADLESS", "false").lower() in ("true", "1", "yes")
+        browser = p.chromium.launch(headless=headless)
         context = browser.new_context()
         page = context.new_page()
 
@@ -131,6 +133,7 @@ if __name__ == "__main__":
     verify_dir.mkdir(parents=True, exist_ok=True)
     script_path = verify_dir / f"{failed_test_id}_smoke_verify.py"
     script_path.write_text(code, encoding="utf-8")
+    mirror_to_cloud(script_path, code, content_type="text/x-python")
 
     logger.info(f"[VERIFICATION - SMOKE BUILDER] Smoke verification script saved to: {script_path}")
 

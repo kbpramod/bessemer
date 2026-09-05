@@ -15,7 +15,7 @@ _daemon_task: Optional[asyncio.Task] = None
 
 def run_cron_cycle(
     domain: Optional[str] = None,
-    headless: bool = True,
+    headless: bool = False,
     limit: int = 50,
 ) -> Dict[str, Any]:
     """
@@ -92,7 +92,7 @@ def run_cron_cycle(
     }
 
 
-def run_single_test(test_id: str, headless: bool = True) -> Dict[str, Any]:
+def run_single_test(test_id: str, headless: bool = False) -> Dict[str, Any]:
     """
     Executes exactly one test immediately, regardless of its cron schedule.
     Used by the "Run Now" action so a test doesn't have to wait for its due time.
@@ -148,7 +148,7 @@ def run_single_test(test_id: str, headless: bool = True) -> Dict[str, Any]:
 async def start_cron_scheduler_daemon(
     poll_interval_seconds: int = 60,
     domain: Optional[str] = None,
-    headless: bool = True,
+    headless: bool = False,
 ) -> None:
     """
     Continuous background daemon that periodically checks the PostgreSQL tests table

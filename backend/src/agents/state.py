@@ -49,8 +49,10 @@ class HealEvent(TypedDict, total=False):
     attempt: int
     test_id: str
     error_snippet: str
+    failure_class: str  # "wrong_expectation" | "automation_defect"
     diagnosis: str
     fix_plan: str
+    preserve: str
 
 
 class FailureContext(TypedDict, total=False):
@@ -93,6 +95,10 @@ class ForgeState(TypedDict, total=False):
     page_model: Optional[Dict[str, Any]]
     change_detection: Optional[Dict[str, Any]]
     page_understanding: Optional[Dict[str, Any]]
+
+    # Assertions grounded in what discovery actually observed, plus an explicit list of what
+    # a single-page snapshot cannot know (see nodes/expectation.py)
+    assertable_signals: Optional[Dict[str, Any]]
 
     # Test Planning & Cron Queue
     test_plan: List[TestScenario]

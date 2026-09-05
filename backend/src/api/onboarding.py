@@ -6,6 +6,7 @@ import asyncio
 
 from events import publish_event, get_event_queue
 
+from agents.onboarding_graph import run_onboarding_graph
 from db.repository import ForgeRepository
 from schemas.account import AccountCreate, AccountResponse
 from schemas.onboarding import OnboardingRequest, OnboardingResponse
@@ -14,22 +15,6 @@ from schemas.website import WebsiteResponse
 logger = logging.getLogger("forge.api.onboarding")
 
 router = APIRouter(prefix="/onboarding", tags=["Onboarding"])
-
-
-def run_onboarding_graph(state: Dict[str, Any]) -> None:
-    """Executes the onboarding graph (discover -> understanding -> planner -> builder),
-    publishing progress to the website's event stream."""
-    from agents.onboarding_graph import create_onboarding_graph
-
-    website_id = state["website_id"]
-    graph = create_onboarding_graph()
-    publish_event(website_id, "Onboarding graph started")
-    try:
-        graph.invoke(state)
-        publish_event(website_id, "Onboarding graph completed")
-    except Exception as e:
-        publish_event(website_id, f"Onboarding graph failed: {e}")
-        logger.error(f"[ONBOARDING API] Graph error for website {website_id}: {e}")
 
 
 @router.post("/", response_model=OnboardingResponse, status_code=status.HTTP_201_CREATED)

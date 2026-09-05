@@ -222,7 +222,7 @@ export type RunTestResult = {
   duration_seconds: number;
 };
 
-export function runTestNow(testId: string, headless = true): Promise<RunTestResult> {
+export function runTestNow(testId: string, headless = false): Promise<RunTestResult> {
   return request<RunTestResult>(`/api/cron/run/${encodeURIComponent(testId)}`, {
     method: "POST",
     body: JSON.stringify({ headless }),

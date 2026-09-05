@@ -16,10 +16,68 @@ You MUST divide your test hypotheses into two distinct categories:
 1. "SMOKE" (1 to 2 tests):
    - Fast sanity checks validating that the target page loads cleanly, primary navigation is functional, and core entry points / modals open without JavaScript crashes.
    - Example: Verify landing page loads and clicking primary navigation / contact link successfully transitions state.
-2. "FLOW" (2 to 3 tests):
+2. "FLOW" (4 to 7 tests):
    - Multi-step end-to-end user journeys validating real capabilities:
      ACTION -> STATE TRANSITION -> OUTCOME
    - Example: Complete form submission, user authentication, search and filter flow, or multi-step checkout/interaction.
+
+NEGATIVE AND BOUNDARY COVERAGE (REQUIRED):
+Never stop at the happy path. For EVERY form or authentication surface you find (login,
+signup, search, checkout, contact), plan the successful journey AND a set of failure and
+boundary journeys alongside it. For a login form, that means separate test hypotheses for:
+   - valid credentials succeed (happy path)
+   - wrong password with a valid username is rejected
+   - unknown / wrong email or username is rejected
+   - malformed email format is rejected (e.g. "not-an-email")
+   - excessively long email / username input is handled without crashing (e.g. 300+ chars)
+   - excessively long password input is handled without crashing (e.g. 300+ chars)
+   - empty submission with both fields blank is rejected
+Apply the same thinking to other forms: invalid values, wrong types, over-length input,
+required fields left empty, and boundary values.
+
+For every negative test, `expected` must assert the application FAILS GRACEFULLY:
+an inline validation or error message is shown, the user stays on the same page, and the
+app does NOT navigate to an authenticated state or throw an unhandled error. A negative
+test PASSES when the application correctly rejects the bad input.
+
+Use ids that make the case obvious, e.g. "flow_login_valid", "flow_login_wrong_password",
+"flow_login_invalid_email_format", "flow_login_overlong_password".
+
+BUILD EXPECTATIONS FROM `assertable_signals`, NOT FROM IMAGINATION (CRITICAL):
+The context includes `assertable_signals`, derived directly from what the browser actually
+observed on this page. Treat it as the source of truth for every `expected` entry:
+  - `assertable_now`        — facts true on the current page; safe to assert directly.
+  - `state_change_signals`  — elements present BEFORE the action whose DISAPPEARANCE proves a
+                              successful transition. This is the preferred success assertion.
+  - `known_routes`          — the ONLY routes that exist. Never assert a path outside this list.
+  - `request_endpoints`     — real form actions; assert the submit response status instead of
+                              guessing where the browser lands.
+  - `unverified`            — things that genuinely cannot be known from this snapshot. Never
+                              write an expectation that depends on any of these.
+  - `recommended_success_assertions` / `recommended_failure_assertions` — ready-made, grounded
+                              assertions; prefer them over anything you would invent.
+
+If `assertable_signals` does not support the outcome you want to assert, that outcome is not
+verifiable — assert a weaker signal that IS supported rather than inventing one.
+
+NEVER INVENT DESTINATION ROUTES (CRITICAL):
+You do NOT know where the application navigates after an action. Do not guess a URL path.
+PROHIBITED: "user is redirected to /dashboard", "navigation:/dashboard", "lands on /home",
+"URL becomes /account" — unless that exact path appears in the provided available_links.
+Inventing a route produces a test that fails against a perfectly healthy application and
+gets misreported as an application bug.
+
+Instead, express a successful transition with signals that are observable without knowing
+the destination. Prefer, in this order:
+   1. The pre-action state is GONE — e.g. the login form / password field is no longer
+      visible, the submit button is gone, the modal closed.
+   2. An authenticated/success indicator APPEARS — e.g. a logout control, user/account menu,
+      a confirmation message, or content only reachable after the action.
+   3. The URL simply CHANGED from the starting URL (assert "differs from the login URL",
+      never a specific path).
+   4. The underlying request SUCCEEDED — e.g. the form's submit/auth network response
+      returned a non-error HTTP status, and no 4xx/5xx or console error was produced.
+Only assert a concrete path when that route is present in available_links.
 
 CRITICAL RULE:
 Do NOT generate tests that merely check if a static element exists.
@@ -33,7 +91,9 @@ For each test hypothesis, provide strictly:
 - preconditions: List of prerequisites (e.g. ["valid credentials are available", "homepage is loaded"])
 - steps: Action sequence to execute the journey
 - expected: List of expected outcomes/assertions (e.g. ["user reaches authenticated application state"])
-- evidence: Grounding evidence observed from DOM elements and routes (e.g. ["element:email", "element:password", "element:login_button", "navigation:/dashboard"])
+- evidence: Grounding evidence ACTUALLY OBSERVED in the discovery data — element names/text
+  from the discovered elements, and routes only if that exact href appears in available_links
+  (e.g. ["element:email", "element:password", "element:login_button"])
 - supported_viewports: ["desktop", "tablet", "mobile"]
 - priority: "high", "medium", or "low"
 
@@ -50,20 +110,20 @@ Return strictly a JSON array of objects matching this schema:
       "Verify navigation destination responds without application crash"
     ],
     "expected": [
-      "Target view transitions cleanly without runtime console errors"
+      "Target view transitions cleanly without runtime console errors",
+      "The page URL changes from the starting URL, or new content becomes visible"
     ],
     "evidence": [
       "element:nav_bar",
-      "element:nav_link",
-      "navigation:/about"
+      "element:nav_link"
     ],
     "supported_viewports": ["desktop", "tablet", "mobile"],
     "priority": "high"
   },
   {
-    "id": "flow_login",
+    "id": "flow_login_valid",
     "type": "FLOW",
-    "intent": "A user can log into the application",
+    "intent": "A user can log into the application with valid credentials",
     "preconditions": [
       "valid credentials are available"
     ],
@@ -73,16 +133,67 @@ Return strictly a JSON array of objects matching this schema:
       "submit login"
     ],
     "expected": [
-      "user reaches authenticated application state"
+      "the login form is no longer visible",
+      "an authenticated indicator (e.g. logout control or account menu) is present",
+      "the URL differs from the login page URL",
+      "no error message and no 4xx/5xx response is produced"
     ],
     "evidence": [
       "element:email",
       "element:password",
-      "element:login_button",
-      "navigation:/dashboard"
+      "element:login_button"
     ],
     "supported_viewports": ["desktop", "tablet", "mobile"],
     "priority": "high"
+  },
+  {
+    "id": "flow_login_wrong_password",
+    "type": "FLOW",
+    "intent": "Login is rejected when a valid username is used with an incorrect password",
+    "preconditions": [
+      "a valid username is known",
+      "login page is loaded"
+    ],
+    "steps": [
+      "enter a valid username",
+      "enter a deliberately incorrect password",
+      "submit login"
+    ],
+    "expected": [
+      "an error message is displayed",
+      "the user remains on the login page and is NOT authenticated"
+    ],
+    "evidence": [
+      "element:email",
+      "element:password",
+      "element:login_button"
+    ],
+    "supported_viewports": ["desktop", "tablet", "mobile"],
+    "priority": "high"
+  },
+  {
+    "id": "flow_login_overlong_password",
+    "type": "FLOW",
+    "intent": "An excessively long password is handled gracefully without crashing the app",
+    "preconditions": [
+      "login page is loaded"
+    ],
+    "steps": [
+      "enter a valid username",
+      "enter a 300+ character password",
+      "submit login"
+    ],
+    "expected": [
+      "the application rejects the attempt with a validation or error message",
+      "no unhandled exception or blank error page is produced"
+    ],
+    "evidence": [
+      "element:email",
+      "element:password",
+      "element:login_button"
+    ],
+    "supported_viewports": ["desktop"],
+    "priority": "medium"
   }
 ]
 Output ONLY valid JSON.
@@ -105,8 +216,28 @@ def planner_node(state: ForgeState) -> Dict[str, Any]:
 
     logger.info(f"[JOURNEY PLANNER] Formulating SMOKE and FLOW hypotheses for: {target_url}")
 
+    # Usernames/roles of the real registered accounts (never passwords — the planner only
+    # writes hypotheses; the builder injects actual credentials into the script). Knowing a
+    # valid username exists lets it plan cases like "valid username + wrong password".
+    try:
+        from db.repository import ForgeRepository
+        scoped_website_id = state.get("website_id")
+        accounts = (
+            ForgeRepository.get_credentials_for_website(int(scoped_website_id))
+            if scoped_website_id
+            else ForgeRepository.get_credentials_for_url(target_url)
+        )
+        known_accounts = [{"username": a.get("username"), "role": a.get("role")} for a in accounts]
+    except Exception as acc_err:
+        logger.warning(f"[JOURNEY PLANNER] Could not load accounts for {target_url}: {acc_err}")
+        known_accounts = []
+
     planner_input = {
         "url": target_url,
+        "known_accounts": known_accounts,
+        # Grounded assertion catalogue derived from real discovery output, plus an explicit
+        # statement of what a page snapshot cannot know (see nodes/expectation.py).
+        "assertable_signals": state.get("assertable_signals") or {},
         "title": page_info.get("title"),
         "page_type": understanding.get("page_type"),
         "purpose": understanding.get("purpose"),

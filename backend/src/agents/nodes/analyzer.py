@@ -1,11 +1,80 @@
 import json
 import logging
-from typing import Any, Dict
+import re
+from pathlib import Path
+from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 from agents.llm import get_chat_model
 from agents.state import ForgeState, AnalysisResult
 from langchain_core.messages import SystemMessage, HumanMessage
 
 logger = logging.getLogger("forge.agent.analyzer")
+
+_FINAL_URL_RE = re.compile(r"\[FINAL_URL\]\s*(\S+)")
+
+
+def _extract_final_url(stdout: str) -> Optional[str]:
+    """Pulls the `[FINAL_URL] <url>` marker every generated test script prints
+    right before declaring success (see builder.py's system prompts/templates)."""
+    match = _FINAL_URL_RE.search(stdout or "")
+    return match.group(1).strip() if match else None
+
+
+def _normalize_url(url: str) -> str:
+    parsed = urlparse(url)
+    return f"{parsed.scheme}://{parsed.netloc}{parsed.path.rstrip('/')}"
+
+
+def _storage_state_path_for(test_file_path: Optional[str]) -> Optional[str]:
+    """Path of the session file the test script saves next to itself right before closing
+    (see builder.py's templates). Returns None when it wasn't produced."""
+    if not test_file_path:
+        return None
+    candidate = Path(test_file_path).with_suffix("").as_posix() + ".storage_state.json"
+    return candidate if Path(candidate).exists() else None
+
+
+def _maybe_onboard_new_page(
+    final_url: str,
+    started_from: Optional[str],
+    test_file_path: Optional[str] = None,
+    website_id: Optional[int] = None,
+) -> None:
+    """
+    If a passing test ended up on a page different from where it started (e.g. a login
+    flow landing on a dashboard), fire the onboarding graph for that page too, so it gets
+    its own discovered elements, understanding, and generated tests — unless it's already
+    been onboarded.
+
+    The test's browser is already closed by this point, so the authenticated session it
+    saved just before closing is handed to discovery; without it, a page behind a login
+    would just redirect the fresh browser back to the login screen.
+    """
+    if not final_url or not started_from or _normalize_url(final_url) == _normalize_url(started_from):
+        return
+
+    from db.repository import ForgeRepository
+    if ForgeRepository.has_test_for_page(final_url):
+        logger.info(f"[ANALYZER] '{final_url}' already has tests onboarded; skipping.")
+        return
+
+    # Carry the parent site's website_id so the new page inherits exactly that site's
+    # accounts, rather than re-resolving by URL and risking another site on the same domain.
+    if website_id is None:
+        website_id = ForgeRepository.resolve_website_id(started_from)
+
+    storage_state_path = _storage_state_path_for(test_file_path)
+    logger.info(
+        f"[ANALYZER] Test navigated from '{started_from}' to a new page '{final_url}'; "
+        f"triggering onboarding for it (website_id={website_id}, "
+        f"{'reusing saved session' if storage_state_path else 'no saved session available'})."
+    )
+    from agents.onboarding_graph import run_onboarding_graph_background
+    run_onboarding_graph_background(
+        final_url,
+        website_id=website_id,
+        storage_state_path=storage_state_path,
+    )
 
 ANALYZER_SYSTEM_PROMPT = """You are a Principal Test Architect and User Journey Defect Analyst.
 A Playwright automated user journey test has executed. Your job is to answer:
@@ -88,6 +157,20 @@ def analyzer_node(state: ForgeState) -> Dict[str, Any]:
             logger.info(f"[ANALYZER] Indexed PASS in test_runs and advanced next_run_at by {cron_hours}h.")
         except Exception as db_err:
             logger.warning(f"[ANALYZER] Could not update PostgreSQL run metrics: {db_err}")
+
+        # If the passing journey navigated to a page never onboarded before (e.g. a login
+        # flow reaching a dashboard), extend coverage to it automatically.
+        try:
+            final_url = _extract_final_url(exec_res.get("stdout", ""))
+            started_from = current_test.get("page_url") or state.get("target_url")
+            _maybe_onboard_new_page(
+                final_url,
+                started_from,
+                state.get("test_file_path"),
+                website_id=state.get("website_id") or current_test.get("website_id"),
+            )
+        except Exception as e:
+            logger.warning(f"[ANALYZER] Could not evaluate new-page onboarding: {e}")
 
         return {"analysis": analysis, "suite_summary": suite_summary}
 
