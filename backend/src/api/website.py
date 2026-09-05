@@ -49,6 +49,25 @@ def get_website(website_id: int):
     return WebsiteResponse.model_validate(row)
 
 
+@route.get("/{website_id}/runs")
+def list_website_runs(website_id: int, limit: int = 50):
+    """Lists recent test executions for every test belonging to this website's domain."""
+    website = ForgeRepository.get_website_by_id(website_id)
+    if not website:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Website ID {website_id} not found.",
+        )
+
+    runs = ForgeRepository.get_runs_for_domain(domain=website["domain"], limit=limit)
+    return {
+        "website_id": website_id,
+        "domain": website["domain"],
+        "count": len(runs),
+        "runs": runs,
+    }
+
+
 @route.delete("/{website_id}", status_code=status.HTTP_200_OK)
 def delete_website(website_id: int):
     """Deletes a website and cascades deletion to associated accounts and tests."""

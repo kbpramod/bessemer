@@ -1,47 +1,46 @@
+import type { SuiteResult, TestSchedule } from "../../api/client";
 import "./TestCard.css";
 
-export type TestCase = {
-  id: number;
-  title: string;
-  status: "PASS" | "FAIL";
-  runCount: number;
-  passCount: number;
-  failCount: number;
-  details: string;
-};
-
 type TestCardProps = {
-  testCase: TestCase;
+  schedule: TestSchedule;
+  result?: SuiteResult;
   isOpen: boolean;
   onToggle: () => void;
 };
 
-function TestCard({ testCase, isOpen, onToggle }: TestCardProps) {
-  const isPassed = testCase.status === "PASS";
+const RESULT_LABELS: Record<SuiteResult["status"], string> = {
+  PASSED: "PASS",
+  CONFIRMED_BUG: "BUG",
+  FAILED_AUTOMATION: "FAIL",
+  SUSPECTED_APP_FAILURE: "SUSPECT",
+};
+
+function formatTimestamp(value: string | null) {
+  return value ? new Date(value).toLocaleString() : "never";
+}
+
+function TestCard({ schedule, result, isOpen, onToggle }: TestCardProps) {
+  const isPassed = result?.status === "PASSED";
+  const statusLabel = result ? RESULT_LABELS[result.status] : "PENDING";
 
   return (
     <div className={`test-card ${isOpen ? "open" : ""}`}>
-      {/* Card Header */}
       <div className="test-card-header">
         <div className="test-info">
-          <h3>{testCase.title}</h3>
+          <h3>{schedule.title}</h3>
 
-          <span className="run-count">{testCase.runCount} times ran</span>
+          <span className="run-count">
+            every {schedule.cron_interval_hours}h · last run {formatTimestamp(schedule.last_run_at)}
+          </span>
         </div>
 
         <div className="test-actions">
-          {/* PASS COUNT */}
-          <span className="pass-count">✓ {testCase.passCount}</span>
+          {schedule.is_due && <span className="due-badge">DUE</span>}
 
-          {/* FAIL COUNT */}
-          <span className="fail-count">✕ {testCase.failCount}</span>
-
-          {/* Overall PASS / FAIL */}
-          <span className={`status ${isPassed ? "pass" : "fail"}`}>
-            {testCase.status}
+          <span className={`status ${result ? (isPassed ? "pass" : "fail") : "pending"}`}>
+            {statusLabel}
           </span>
 
-          {/* Open / Close */}
           <button
             className="toggle-button"
             onClick={onToggle}
@@ -52,12 +51,25 @@ function TestCard({ testCase, isOpen, onToggle }: TestCardProps) {
         </div>
       </div>
 
-      {/* Details */}
       {isOpen && (
         <div className="test-card-details">
           <h4>Test Details</h4>
 
-          <p>{testCase.details}</p>
+          <p>ID: {schedule.test_id}</p>
+          <p>Domain: {schedule.domain}</p>
+          <p>Next run: {formatTimestamp(schedule.next_run_at)}</p>
+
+          {result ? (
+            <>
+              <p>Latest outcome: {result.status}</p>
+              {result.duration_s !== undefined && <p>Duration: {result.duration_s}s</p>}
+              {result.heals_needed !== undefined && <p>Self-heal attempts: {result.heals_needed}</p>}
+              {result.incident_id && <p>Incident: {result.incident_id}</p>}
+              {result.error && <p>{result.error}</p>}
+            </>
+          ) : (
+            <p>This test has not run in the current session yet.</p>
+          )}
         </div>
       )}
     </div>

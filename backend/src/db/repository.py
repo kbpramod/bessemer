@@ -470,6 +470,23 @@ class ForgeRepository:
             return [dict(r) for r in result.mappings().all()]
 
     @staticmethod
+    def get_runs_for_domain(domain: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """Returns the most recent test executions for every test belonging to a domain."""
+        sql = """
+        SELECT
+            r.run_id, r.test_id, t.title, r.status, r.exit_code,
+            r.duration_s, r.error_summary, r.executed_at
+        FROM test_runs r
+        JOIN tests t ON r.test_id = t.test_id
+        WHERE t.domain = :domain
+        ORDER BY r.executed_at DESC
+        LIMIT :limit;
+        """
+        with get_connection() as conn:
+            result = conn.execute(text(sql), {"domain": domain, "limit": limit})
+            return [dict(r) for r in result.mappings().all()]
+
+    @staticmethod
     def search_tests(query_text: str) -> List[Dict[str, Any]]:
         sql = """
         SELECT test_id, domain, title, description, category, priority, script_path, status

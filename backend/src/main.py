@@ -9,6 +9,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from api.website import route as website_router
 from api.cron import router as cron_router
 from api.onboarding import router as onboarding_router
@@ -32,6 +33,17 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Bessemer Backend API", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Include routers
 app.include_router(website_router, prefix="/api")

@@ -103,6 +103,47 @@ nav {
   background: #1d4ed8;
 }
 
+.link-button {
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #2563eb;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  text-decoration: underline;
+}
+
+/* Shared status badge, used by test cards, run history and website rows */
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 9px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.status.pass {
+  color: #16803c;
+  background: #e9f7ee;
+}
+
+.status.fail {
+  color: #c62828;
+  background: #fdecec;
+}
+
+.status.pending {
+  color: #6b7280;
+  background: #f3f4f6;
+}
+
 .toast {
   position: fixed;
   top: 24px;

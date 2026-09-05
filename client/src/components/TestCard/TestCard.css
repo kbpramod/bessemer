@@ -32,26 +32,15 @@
   gap: 12px;
 }
 
-/* PASS / FAIL */
+/* Status badge styles live in App.css and are shared across views. */
 
-.status {
-  display: flex;
-  align-items: center;
-  gap: 5px;
+.due-badge {
   padding: 5px 9px;
   border-radius: 5px;
+  background: #fff7e6;
+  color: #8a5a00;
   font-size: 12px;
   font-weight: 600;
-}
-
-.status.pass {
-  color: #16803c;
-  background: #e9f7ee;
-}
-
-.status.fail {
-  color: #c62828;
-  background: #fdecec;
 }
 
 .status-icon {

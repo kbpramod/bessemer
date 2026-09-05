@@ -1,96 +1,107 @@
-import { useState } from "react";
-import type { TestCase } from "../TestCard/TestCard";
-import TestCard from "../TestCard/TestCard";
+import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  getDaemonStatus,
+  listWebsites,
+  startDaemon,
+  stopDaemon,
+  type Website,
+} from "../../api/client";
 import './Dashboard.css';
-// import TestCard, { TestCase } from "./TestCard";
 
-const testCases: TestCase[] = [
-  {
-    id: 1,
-    title: "Login with valid credentials",
-    status: "PASS",
-    runCount: 5,
-    passCount: 5,
-    failCount: 0,
-    details: "Login worked successfully on all runs.",
-  },
-  {
-    id: 2,
-    title: "Checkout with valid card",
-    status: "FAIL",
-    runCount: 5,
-    passCount: 3,
-    failCount: 2,
-    details: "Checkout failed on two runs because of a payment error.",
-  },
-];
+function Dashboard() {
+  const navigate = useNavigate();
+  const [websites, setWebsites] = useState<Website[]>([]);
+  const [daemonRunning, setDaemonRunning] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
 
-function Dashboard({setShowDashboard}) {
-  const [openId, setOpenId] = useState<number | null>(null);
-   const [showPrompt, setShowPrompt] = useState(false);
-const [prompt, setPrompt] = useState("");
+  const loadWebsites = useCallback(async () => {
+    try {
+      setWebsites(await listWebsites());
+      setError("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load registered websites.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
-  const handleDifferentCredentials=()=>{
-    setShowDashboard(false);
-  }
+  useEffect(() => {
+    loadWebsites();
+    getDaemonStatus()
+      .then((status) => setDaemonRunning(status.daemon_running))
+      .catch(() => setDaemonRunning(false));
+  }, [loadWebsites]);
+
+  const handleToggleDaemon = async () => {
+    try {
+      if (daemonRunning) {
+        await stopDaemon();
+        setDaemonRunning(false);
+      } else {
+        await startDaemon({ interval_seconds: 60 });
+        setDaemonRunning(true);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to change the scheduler state.");
+    }
+  };
 
   return (
     <div className="dashboard">
-{(
-  <div className="dashboard">
-    <div className="dashboard-header">
-      <h1>Testing Dashboard</h1>
+      <div className="dashboard-header">
+        <div>
+          <h1>Testing Dashboard</h1>
+          <p className="dashboard-subtitle">
+            {websites.length} registered website{websites.length === 1 ? "" : "s"}
+            {daemonRunning ? " · scheduler running" : ""}
+          </p>
+        </div>
 
-      <button
-        className="prompt-button"
-        onClick={() => setShowPrompt((prev) => !prev)}
-      >
-        {showPrompt ? "Close Prompt" : "Add Prompt"}
-      </button>
-    </div>
+        <div className="dashboard-actions">
+          <button className="prompt-button" onClick={handleToggleDaemon}>
+            {daemonRunning ? "Stop Scheduler" : "Start Scheduler"}
+          </button>
 
-    {showPrompt && (
-      <div className="prompt-section">
-        <textarea
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          placeholder="Enter your testing prompt..."
-          rows={5}
-        />
-
-        <button
-          className="save-prompt-button"
-          onClick={() => {
-            console.log("Prompt:", prompt);
-            setShowPrompt(false);
-          }}
-        >
-          Save Prompt
-        </button>
+          <button className="save-prompt-button" onClick={() => navigate("/")}>
+            Register Website
+          </button>
+        </div>
       </div>
-    )}
 
-    <div className="test-cards">
-      {testCases.map((testCase) => (
-        <TestCard
-          key={testCase.id}
-          testCase={testCase}
-          isOpen={openId === testCase.id}
-          onToggle={() =>
-            setOpenId(
-              openId === testCase.id
-                ? null
-                : testCase.id
-            )
-          }
-        />
-      ))}
-    </div>
-  </div>
-)}
-<div className="button-container">
-<button className="credentials-button" onClick={handleDifferentCredentials} > Add Different Credentials </button>
-</div>
+      {error && <div className="dashboard-error">{error}</div>}
+
+      {isLoading && <p className="dashboard-empty">Loading websites...</p>}
+
+      {!isLoading && websites.length === 0 && (
+        <p className="dashboard-empty">
+          No websites registered yet. Register one to start testing.
+        </p>
+      )}
+
+      <div className="website-list">
+        {websites.map((website) => (
+          <button
+            key={website.id}
+            className="website-row"
+            onClick={() => navigate(`/websites/${website.id}`)}
+          >
+            <div className="website-row-main">
+              <h3>{website.domain}</h3>
+              <span className="website-row-url">{website.url}</span>
+            </div>
+
+            <div className="website-row-meta">
+              <span className={`status ${website.is_active ? "pass" : "pending"}`}>
+                {website.is_active ? "ACTIVE" : "INACTIVE"}
+              </span>
+              <span className="website-row-id">ID {website.id}</span>
+              <span className="website-row-chevron">›</span>
+            </div>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
