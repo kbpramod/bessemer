@@ -1,6 +1,10 @@
 import logging
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, BackgroundTasks
+from fastapi.responses import StreamingResponse
+import asyncio
+
+from ..events import publish_event, get_event_queue
 
 from db.repository import ForgeRepository
 from schemas.account import AccountCreate, AccountResponse
@@ -13,7 +17,7 @@ router = APIRouter(prefix="/onboarding", tags=["Onboarding"])
 
 
 @router.post("/", response_model=OnboardingResponse, status_code=status.HTTP_201_CREATED)
-def onboard_website_and_accounts(request: OnboardingRequest):
+def onboard_website_and_accounts(request: OnboardingRequest, background_tasks: BackgroundTasks):
     """
     ONBOARDING API:
     Saves a target website and its associated user accounts to PostgreSQL in a single cohesive call.
@@ -39,6 +43,8 @@ def onboard_website_and_accounts(request: OnboardingRequest):
     # 2. Persist website into database
     try:
         website_row = ForgeRepository.create_website(url=target_url, is_active=is_active)
+        # Publish event for website creation
+        publish_event(website_row["id"], f"Website created with ID {website_row['id']}")
     except Exception as e:
         logger.error(f"[ONBOARDING API] Failed to save website '{target_url}': {e}")
         raise HTTPException(
@@ -61,6 +67,7 @@ def onboard_website_and_accounts(request: OnboardingRequest):
                 credentials=acc.credentials or {},
                 is_active=acc.is_active,
             )
+            publish_event(website_id, f"Account '{acc.username}' added for website {website_id}")
             created_accounts.append(account_row)
             logger.info(f"[ONBOARDING API] Added account '{acc.username}' (role='{acc.role}') for website ID={website_id}")
         except Exception as acc_err:
@@ -72,6 +79,26 @@ def onboard_website_and_accounts(request: OnboardingRequest):
 
     # Fetch updated list of all accounts for this website
     all_accounts = ForgeRepository.list_accounts_for_website(website_id=website_id)
+
+        # Prepare initial state for onboarding graph
+    initial_state = {
+        "target_url": target_url,
+        "website_id": website_id,
+        "config": {},
+    }
+    # Schedule onboarding graph execution in background
+    def run_onboarding_graph(state: dict):
+        from agents.onboarding_graph import create_onboarding_graph
+        graph = create_onboarding_graph()
+        publish_event(state["website_id"], "Onboarding graph started")
+        try:
+            final_state = graph.invoke(state)
+            publish_event(state["website_id"], "Onboarding graph completed")
+            # Optionally persist final_state info here
+        except Exception as e:
+            publish_event(state["website_id"], f"Onboarding graph failed: {e}")
+            logger.error(f"[ONBOARDING API] Graph error for website {state['website_id']}: {e}")
+    background_tasks.add_task(run_onboarding_graph, initial_state)
 
     return OnboardingResponse(
         status="success",
@@ -94,6 +121,22 @@ def get_onboarding_details(website_id: int):
         "accounts": [AccountResponse.model_validate(a) for a in accounts],
         "account_count": len(accounts),
     }
+
+# SSE streaming endpoint for onboarding events
+@router.get("/{website_id}/events", response_model=None)
+async def stream_onboarding_events(website_id: int):
+    """Server‑Sent Events stream of onboarding progress for the given website ID.
+    Clients can connect and receive textual messages as the onboarding graph runs.
+    """
+    async def event_generator():
+        queue = get_event_queue(website_id)
+        while True:
+            try:
+                message = await queue.get()
+                yield f"data: {message}\n\n"
+            except asyncio.CancelledError:
+                break
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 @router.post("/{website_id}/accounts", response_model=AccountResponse, status_code=status.HTTP_201_CREATED)
