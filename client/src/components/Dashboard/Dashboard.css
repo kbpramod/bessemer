@@ -1,0 +1,71 @@
+.dashboard{
+    padding: 20px;
+}
+.dashboard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.prompt-button {
+  padding: 10px 16px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.prompt-button:hover {
+  background: #f5f5f5;
+}
+
+.prompt-section {
+  padding: 16px;
+  margin-bottom: 20px;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  background: white;
+}
+
+.prompt-section textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 14px;
+  outline: none;
+}
+
+.prompt-section textarea:focus {
+  border-color: #999;
+}
+
+.save-prompt-button {
+  margin-top: 10px;
+  padding: 9px 16px;
+  border: none;
+  border-radius: 6px;
+  background: #222;
+  color: white;
+  cursor: pointer;
+}
+.credentials-button {
+  padding: 10px 16px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: white;
+  color: #222;
+  cursor: pointer;
+  font-size: 14px;
+}
+.credentials-button:hover {
+  background: #f5f5f5;
+}
+.button-container{
+    padding: 20px;
+}

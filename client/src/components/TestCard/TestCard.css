@@ -1,0 +1,104 @@
+.test-card {
+  width: 100%;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  background: #ffffff;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.test-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+}
+
+.test-info h3 {
+  margin: 0 0 5px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #222;
+}
+
+.run-count {
+  font-size: 13px;
+  color: #777;
+}
+
+.test-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* PASS / FAIL */
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 9px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.status.pass {
+  color: #16803c;
+  background: #e9f7ee;
+}
+
+.status.fail {
+  color: #c62828;
+  background: #fdecec;
+}
+
+.status-icon {
+  font-size: 14px;
+  font-weight: bold;
+}
+
+/* Open / Close button */
+
+.toggle-button {
+  width: 32px;
+  height: 32px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border: 1px solid #ddd;
+  border-radius: 5px;
+
+  background: #fff;
+  cursor: pointer;
+
+  font-size: 18px;
+}
+
+.toggle-button:hover {
+  background: #f5f5f5;
+}
+
+/* Details */
+
+.test-card-details {
+  padding: 18px 20px;
+  border-top: 1px solid #e5e5e5;
+  background: #fafafa;
+}
+
+.test-card-details h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.test-card-details p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #555;
+}
