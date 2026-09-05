@@ -306,8 +306,15 @@ test.describe('[{test_type}] {current_test.get("category", "regression").capital
         # Determine cron timings (e.g. 6 hours for SMOKE sanity checks, 24 hours for FLOW journeys)
         cron_hours = current_test.get("cron_interval_hours") or (6 if test_type == "SMOKE" else 24)
 
+        # `tests.test_id` is globally unique, but the planner reuses generic hypothesis ids
+        # (e.g. "flow_login", "smoke_navigation_header") across every site it plans for.
+        # Without scoping, onboarding a second site with the same hypothesis id would hit
+        # save_test's ON CONFLICT branch and silently overwrite an unrelated site's row
+        # (its script_path/website_id get updated while `domain` is left stale).
+        db_test_id = f"ws{website_id}_{test_id}" if website_id else f"{domain}_{test_id}"
+
         ForgeRepository.save_test(
-            test_id=test_id,
+            test_id=db_test_id,
             domain=domain,
             page_url=target_url,
             title=current_test.get("title", test_id),

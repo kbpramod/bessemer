@@ -10,6 +10,7 @@ import {
   onboardingEventsUrl,
   runCronCycle,
   runDiscovery,
+  runTestNow,
   type Account,
   type CronRunResult,
   type SuiteResult,
@@ -56,6 +57,8 @@ function WebsiteDetail() {
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [discoveryEvents, setDiscoveryEvents] = useState<string[]>([]);
   const streamRef = useRef<EventSource | null>(null);
+
+  const [runningTestId, setRunningTestId] = useState<string | null>(null);
 
   const loadTestData = useCallback(async (domain: string) => {
     const [schedule, runHistory] = await Promise.all([
@@ -146,6 +149,23 @@ function WebsiteDetail() {
       setError(err instanceof Error ? err.message : "Failed to run the test cycle.");
     } finally {
       setIsRunning(false);
+    }
+  };
+
+  const handleRunTestNow = async (testId: string) => {
+    if (!website) return;
+
+    setRunningTestId(testId);
+    setError("");
+
+    try {
+      const { result } = await runTestNow(testId);
+      setResults((prev) => ({ ...prev, [testId]: result }));
+      await loadTestData(website.domain);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `Failed to run test '${testId}'.`);
+    } finally {
+      setRunningTestId(null);
     }
   };
 
@@ -277,7 +297,9 @@ function WebsiteDetail() {
                 schedule={schedule}
                 result={results[schedule.test_id]}
                 isOpen={openId === schedule.test_id}
+                isRunning={runningTestId === schedule.test_id}
                 onToggle={() => setOpenId(openId === schedule.test_id ? null : schedule.test_id)}
+                onRunNow={() => handleRunTestNow(schedule.test_id)}
               />
             ))
           )}

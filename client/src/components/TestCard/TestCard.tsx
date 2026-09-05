@@ -5,7 +5,9 @@ type TestCardProps = {
   schedule: TestSchedule;
   result?: SuiteResult;
   isOpen: boolean;
+  isRunning: boolean;
   onToggle: () => void;
+  onRunNow: () => void;
 };
 
 const RESULT_LABELS: Record<SuiteResult["status"], string> = {
@@ -19,7 +21,7 @@ function formatTimestamp(value: string | null) {
   return value ? new Date(value).toLocaleString() : "never";
 }
 
-function TestCard({ schedule, result, isOpen, onToggle }: TestCardProps) {
+function TestCard({ schedule, result, isOpen, isRunning, onToggle, onRunNow }: TestCardProps) {
   const isPassed = result?.status === "PASSED";
   const statusLabel = result ? RESULT_LABELS[result.status] : "PENDING";
 
@@ -40,6 +42,17 @@ function TestCard({ schedule, result, isOpen, onToggle }: TestCardProps) {
           <span className={`status ${result ? (isPassed ? "pass" : "fail") : "pending"}`}>
             {statusLabel}
           </span>
+
+          <button
+            className="run-now-button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRunNow();
+            }}
+            disabled={isRunning}
+          >
+            {isRunning ? "Running..." : "Run Now"}
+          </button>
 
           <button
             className="toggle-button"

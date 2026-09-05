@@ -212,6 +212,23 @@ export function getTestSchedules(domain?: string): Promise<ScheduleResponse> {
   return request<ScheduleResponse>(`/api/cron/schedule${query}`);
 }
 
+export type RunTestResult = {
+  status: "completed" | "not_found";
+  test_id: string;
+  result: SuiteResult;
+  incident_reports: unknown[];
+  started_at: string;
+  completed_at: string;
+  duration_seconds: number;
+};
+
+export function runTestNow(testId: string, headless = true): Promise<RunTestResult> {
+  return request<RunTestResult>(`/api/cron/run/${encodeURIComponent(testId)}`, {
+    method: "POST",
+    body: JSON.stringify({ headless }),
+  });
+}
+
 export function runCronCycle(payload: {
   domain?: string;
   headless?: boolean;

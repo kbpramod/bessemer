@@ -34,6 +34,27 @@
 
 /* Status badge styles live in App.css and are shared across views. */
 
+.run-now-button {
+  padding: 6px 12px;
+  border: 1px solid #2563eb;
+  border-radius: 5px;
+  background: #fff;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.run-now-button:hover {
+  background: #eff4ff;
+}
+
+.run-now-button:disabled {
+  border-color: #d1d5db;
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
 .due-badge {
   padding: 5px 9px;
   border-radius: 5px;

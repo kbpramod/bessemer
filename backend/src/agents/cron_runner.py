@@ -92,6 +92,59 @@ def run_cron_cycle(
     }
 
 
+def run_single_test(test_id: str, headless: bool = True) -> Dict[str, Any]:
+    """
+    Executes exactly one test immediately, regardless of its cron schedule.
+    Used by the "Run Now" action so a test doesn't have to wait for its due time.
+    """
+    run_start = datetime.now(timezone.utc)
+    test_row = ForgeRepository.get_test_by_id(test_id)
+
+    if not test_row:
+        return {
+            "status": "not_found",
+            "test_id": test_id,
+            "message": f"No test found with id '{test_id}'.",
+        }
+
+    logger.info(f"[CRON RUNNER] Running test on demand: {test_id}")
+
+    initial_state: ForgeState = {
+        "target_url": test_row.get("page_url") or "https://example.com",
+        "target_domain": test_row.get("domain"),
+        "test_queue": [test_row],
+        "config": {"headless": headless},
+        "suite_summary": [],
+        "incident_reports": [],
+    }
+
+    graph = create_cron_graph()
+    final_state = graph.invoke(initial_state)
+
+    suite_summary = final_state.get("suite_summary", [])
+    incidents = final_state.get("incident_reports", [])
+    run_end = datetime.now(timezone.utc)
+
+    result = suite_summary[0] if suite_summary else {
+        "id": test_id,
+        "title": test_row.get("title"),
+        "status": "FAILED_AUTOMATION",
+        "error": "Test did not produce a result.",
+    }
+
+    logger.info(f"[CRON RUNNER] On-demand run of '{test_id}' completed: {result.get('status')}")
+
+    return {
+        "status": "completed",
+        "test_id": test_id,
+        "result": result,
+        "incident_reports": incidents,
+        "started_at": run_start.isoformat(),
+        "completed_at": run_end.isoformat(),
+        "duration_seconds": round((run_end - run_start).total_seconds(), 2),
+    }
+
+
 async def start_cron_scheduler_daemon(
     poll_interval_seconds: int = 60,
     domain: Optional[str] = None,

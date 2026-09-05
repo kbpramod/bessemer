@@ -203,7 +203,7 @@ def editor_node(state: ForgeState) -> Dict[str, Any]:
         try:
             domain = sanitize_domain(target_url)
             ForgeRepository.save_test(
-                test_id=current_test.get("id", test_path.stem),
+                test_id=str(current_test.get("test_id") or current_test.get("id") or test_path.stem),
                 domain=domain,
                 page_url=target_url,
                 title=current_test.get("title", test_path.stem),

@@ -3,9 +3,12 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, BackgroundTasks, Query
 from pydantic import BaseModel
 
+from fastapi import HTTPException, status
+
 from agents.cron_runner import (
     is_daemon_running,
     run_cron_cycle,
+    run_single_test,
     start_cron_scheduler_daemon,
     stop_cron_scheduler_daemon,
 )
@@ -18,6 +21,10 @@ class CronRunRequest(BaseModel):
     domain: Optional[str] = None
     headless: bool = True
     limit: int = 50
+
+
+class RunTestRequest(BaseModel):
+    headless: bool = True
 
 
 class DaemonStartRequest(BaseModel):
@@ -73,6 +80,15 @@ def trigger_cron_cycle(request: CronRunRequest):
         headless=request.headless,
         limit=request.limit,
     )
+    return result
+
+
+@router.post("/run/{test_id}")
+def trigger_single_test(test_id: str, request: RunTestRequest = RunTestRequest()):
+    """Runs a single test immediately, bypassing its cron schedule (the "Run Now" action)."""
+    result = run_single_test(test_id=test_id, headless=request.headless)
+    if result["status"] == "not_found":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=result["message"])
     return result
 
 
