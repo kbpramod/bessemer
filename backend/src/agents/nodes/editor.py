@@ -241,6 +241,43 @@ def editor_node(state: ForgeState) -> Dict[str, Any]:
             f"This usually means the edit call itself failed above — fix that rather than retrying."
         )
 
+    # Archive the script's lineage for this run. Healing overwrites in place, so without this
+    # the previous version and the reason it changed are gone.
+    run_id = state.get("run_id") or f"run_{test_path.stem}"
+    history_test_id = str(current_test.get("test_id") or current_test.get("id") or test_path.stem)
+    history_url = state.get("target_url") or ""
+    try:
+        # attempt 0 == the code as it stood before any healing touched it.
+        if heal_attempt <= 1:
+            save_script_revision(
+                url_or_domain=history_url,
+                test_id=history_test_id,
+                run_id=run_id,
+                attempt=0,
+                code=existing_code,
+                metadata={"stage": "pre_heal_baseline"},
+            )
+
+        revision_path = save_script_revision(
+            url_or_domain=history_url,
+            test_id=history_test_id,
+            run_id=run_id,
+            attempt=heal_attempt,
+            code=edited_code,
+            metadata={
+                "stage": "post_heal",
+                "edit_applied": edit_applied,
+                "failure_class": failure_class,
+                "diagnosis": diagnosis,
+                "fix_plan": fix_plan,
+                "preserve": preserve,
+                "error_summary": exec_res.get("error_summary"),
+            },
+        )
+        logger.info(f"[EDITOR] Archived script revision (attempt {heal_attempt}): {revision_path.name}")
+    except Exception as hist_err:
+        logger.warning(f"[EDITOR] Could not archive script revision: {hist_err}")
+
     # Write edited code back to file
     test_path.parent.mkdir(parents=True, exist_ok=True)
     with open(test_path, "w", encoding="utf-8") as f:

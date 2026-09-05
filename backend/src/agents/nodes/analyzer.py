@@ -140,7 +140,8 @@ def analyzer_node(state: ForgeState) -> Dict[str, Any]:
         try:
             from datetime import datetime, timezone
             from db.repository import ForgeRepository
-            run_id = f"run_{test_id}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
+            # Reuse the cycle's run_id so this row ties to the archived script revisions.
+            run_id = state.get("run_id") or f"run_{test_id}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
             ForgeRepository.record_test_run(
                 run_id=run_id,
                 test_id=test_id,

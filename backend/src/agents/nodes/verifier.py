@@ -104,7 +104,8 @@ def verifier_node(state: ForgeState) -> Dict[str, Any]:
             )
             # Record failed run and advance timestamps
             try:
-                run_id = f"run_{test_id}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
+                # Reuse the cycle's run_id so this row ties to the archived script revisions.
+                run_id = state.get("run_id") or f"run_{test_id}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
                 ForgeRepository.record_test_run(
                     run_id=run_id,
                     test_id=test_id,
