@@ -18,6 +18,9 @@ def route_verification_verdict(state: VerificationState) -> Literal["report", "_
     Conditional router out of the Verifier LLM node:
     - 'CONFIRMED_APP_BUG': Verified genuine application bug -> route to 'report' -> END.
     - 'NOT_CONFIRMED': False alarm / automation divergence -> route directly to END.
+    - 'INCONCLUSIVE': Verification produced no application-level evidence (e.g. the smoke
+      probe itself failed to execute) -> END without filing a report, so the failure is
+      healed and retried rather than misreported as an application bug.
     """
     verdict = state.get("verdict", "NOT_CONFIRMED")
     if verdict == "CONFIRMED_APP_BUG":

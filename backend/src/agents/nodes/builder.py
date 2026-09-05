@@ -6,6 +6,7 @@ from typing import Any, Dict
 from agents.llm import get_chat_model
 from agents.state import ForgeState
 from langchain_core.messages import SystemMessage, HumanMessage
+from agents.script_lint import apply_lint
 from storage.local import get_website_storage_dir, mirror_to_cloud
 from db.repository import ForgeRepository
 from schemas.discovery import FIXED_VIEWPORTS
@@ -90,6 +91,19 @@ Requirements for the generated Playwright Python test:
      redirect (HTTP 301/302 to subdomains or canonical URLs).
    - For NEGATIVE tests (wrong password, invalid input), assert the opposite: an error is
      visible AND the user is still on the starting URL / the form is still present.
+   - VALID PYTHON PLAYWRIGHT API ONLY. `expect()` accepts ONLY a Page, Locator or APIResponse
+     — passing a plain string raises "ValueError: Unsupported type: <class 'str'>". There is
+     no `.to_equal()`, `.toBe()`, `.toEqual()` or any camelCase matcher in this binding.
+         WRONG:   expect(page.url).to_equal(start_url)
+         RIGHT:   assert page.url == start_url
+         RIGHT:   expect(page).to_have_url(start_url)
+     Use snake_case throughout (`wait_for_selector`, `get_by_role`, `is_checked`), and never
+     use `await` — this is the synchronous API.
+   - NEVER assume an element's initial state. `assertable_signals.initial_input_states` and
+     each input's `checked_at_load` record what was ACTUALLY observed on the page. A
+     precondition that contradicts it (asserting a checkbox is checked when it loads
+     unchecked) fails before the test exercises anything. If a test needs a particular
+     starting state, SET it (e.g. `check()` / `uncheck()`) rather than asserting it.
 
 5. Output ONLY valid Python code without markdown fences, or wrapped in a single ```python block.
 
@@ -216,9 +230,14 @@ def builder_node(state: ForgeState) -> Dict[str, Any]:
         "inputs": [
             {
                 "forge_id": i.get("forge_id"),
+                "type": i.get("type"),
                 "name": i.get("name"),
                 "placeholder": i.get("placeholder"),
                 "selector": i.get("selector"),
+                # Observed initial state for checkbox/radio inputs — None for other types.
+                # Without this the model guesses ("checkbox 1 is checked") and the test fails
+                # on its own precondition.
+                "checked_at_load": i.get("checked"),
                 "visible_viewports": i.get("visible_viewports", ["desktop"]),
                 "visible_in_target_viewport": target_vp_name in i.get("visible_viewports", ["desktop"]),
             }
@@ -292,11 +311,12 @@ def builder_node(state: ForgeState) -> Dict[str, Any]:
         llm = get_chat_model()
         messages = [
             SystemMessage(content=system_prompt),
-            HumanMessage(content=f"Test Generation Specifications:\n{json.dumps(builder_payload, indent=2)}")
+            HumanMessage(content=f"Test Generation Specifications:\n{json.dumps(builder_payload, indent=2, default=str)}")
         ]
         response = llm.invoke(messages)
         code = clean_code(response.content)
         if is_python:
+            code = apply_lint(code, f"builder/{current_test.get('id', 'test')}")
             header_lines = []
             if "import os" not in code:
                 header_lines.append("import os")

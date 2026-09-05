@@ -77,7 +77,7 @@ def build_smoke_verification_test_node(state: VerificationState) -> Dict[str, An
         llm = get_chat_model()
         messages = [
             SystemMessage(content=SMOKE_BUILDER_SYSTEM_PROMPT),
-            HumanMessage(content=f"Verification Context & Live DOM:\n{json.dumps(builder_payload, indent=2)}")
+            HumanMessage(content=f"Verification Context & Live DOM:\n{json.dumps(builder_payload, indent=2, default=str)}")
         ]
         response = llm.invoke(messages)
         content = response.content.strip()

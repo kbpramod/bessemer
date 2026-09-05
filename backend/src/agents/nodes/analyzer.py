@@ -140,7 +140,8 @@ def analyzer_node(state: ForgeState) -> Dict[str, Any]:
         try:
             from datetime import datetime, timezone
             from db.repository import ForgeRepository
-            run_id = f"run_{test_id}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
+            # Reuse the cycle's run_id so this row ties to the archived script revisions.
+            run_id = state.get("run_id") or f"run_{test_id}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
             ForgeRepository.record_test_run(
                 run_id=run_id,
                 test_id=test_id,
@@ -205,7 +206,7 @@ def analyzer_node(state: ForgeState) -> Dict[str, Any]:
         llm = get_chat_model()
         messages = [
             SystemMessage(content=ANALYZER_SYSTEM_PROMPT),
-            HumanMessage(content=f"Failure Telemetry:\n{json.dumps(analyzer_payload, indent=2)}")
+            HumanMessage(content=f"Failure Telemetry:\n{json.dumps(analyzer_payload, indent=2, default=str)}")
         ]
         response = llm.invoke(messages)
         content = response.content.strip()
@@ -242,7 +243,9 @@ def analyzer_node(state: ForgeState) -> Dict[str, Any]:
             "suggested_fix": "Refine locators and adjust wait times.",
         }
 
-    logger.info(f"[ANALYZER] Verdict for '{current_test.get('id')}': {analysis['verdict']} ({analysis.get('reason')})")
+    # Prefer the test_id slug over the numeric primary key, which is meaningless in logs.
+    log_test_id = current_test.get("test_id") or current_test.get("id")
+    logger.info(f"[ANALYZER] Verdict for '{log_test_id}': {analysis['verdict']} ({analysis.get('reason')})")
 
     if analysis["verdict"] == "SUSPECTED_APP_FAILURE":
         suite_summary.append({

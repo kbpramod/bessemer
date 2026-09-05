@@ -187,7 +187,7 @@ def understanding_node(state: ForgeState) -> Dict[str, Any]:
         llm = get_chat_model()
         messages = [
             SystemMessage(content=SYSTEM_PROMPT),
-            HumanMessage(content=f"Discovered Page Context:\n{json.dumps(page_summary_input, indent=2)}")
+            HumanMessage(content=f"Discovered Page Context:\n{json.dumps(page_summary_input, indent=2, default=str)}")
         ]
         response = llm.invoke(messages)
         content = response.content.strip()

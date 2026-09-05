@@ -255,7 +255,13 @@ def planner_node(state: ForgeState) -> Dict[str, Any]:
             for l in elements.get("links", [])[:12]
         ],
         "available_inputs": [
-            {"placeholder": i.get("placeholder"), "name": i.get("name"), "type": i.get("type")}
+            {
+                "placeholder": i.get("placeholder"),
+                "name": i.get("name"),
+                "type": i.get("type"),
+                # Observed initial state for checkbox/radio inputs — never assume the opposite.
+                "checked_at_load": i.get("checked"),
+            }
             for i in elements.get("inputs", [])[:8]
         ],
     }
@@ -264,7 +270,7 @@ def planner_node(state: ForgeState) -> Dict[str, Any]:
         llm = get_chat_model()
         messages = [
             SystemMessage(content=PLANNER_SYSTEM_PROMPT),
-            HumanMessage(content=f"Discovered Capabilities & Structure:\n{json.dumps(planner_input, indent=2)}")
+            HumanMessage(content=f"Discovered Capabilities & Structure:\n{json.dumps(planner_input, indent=2, default=str)}")
         ]
         response = llm.invoke(messages)
         content = response.content.strip()
