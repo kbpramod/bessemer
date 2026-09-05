@@ -3,21 +3,26 @@ from typing import Any, Dict, List, Optional, TypedDict
 
 class UserJourney(TypedDict, total=False):
     id: str
-    name: str
+    type: str  # "SMOKE" | "FLOW"
+    intent: str  # Core hypothesis intent, e.g. "A user can log into the application"
+    name: str  # Human-readable label
     title: str  # alias/backwards compatibility
-    goal: str
+    goal: str  # alias/backwards compatibility
     description: str  # alias/backwards compatibility
     priority: str  # "high", "medium", "low"
     category: str  # "capability", "state_transition", "happy_path", "validation", "navigation"
     preconditions: List[str]
     steps: List[str]
+    expected: List[str]  # List of expected assertions/states
+    expected_outcome: str  # String summary of expected
+    evidence: List[str]  # Grounding evidence e.g. ["element:email", "navigation:/dashboard"]
     state_transitions: Optional[List[str]]  # e.g. ["anonymous -> contact modal open"]
-    expected_outcome: str
     supported_viewports: List[str]  # ["desktop", "tablet", "mobile"]
     viewport: Optional[str]  # Execution-specific target viewport ("desktop", "tablet", "mobile")
 
 
-# Backwards compatibility alias
+# Aliases for backwards compatibility and clarity
+TestHypothesis = UserJourney
 TestScenario = UserJourney
 UserJourney.__test__ = False
 

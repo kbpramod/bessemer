@@ -148,3 +148,65 @@ def save_discovery_result(
         json.dump(data, f, indent=2, ensure_ascii=False)
 
     return page_path
+
+
+def get_planner_storage_dir(url_or_domain: str) -> Path:
+    """Returns the planner directory for a website: <storage_root>/<domain>/planner/"""
+    planner_dir = get_website_storage_dir(url_or_domain) / "planner"
+    planner_dir.mkdir(parents=True, exist_ok=True)
+    return planner_dir
+
+
+def save_hypotheses(
+    url_or_domain: str,
+    hypotheses: list,
+    filename: str = "hypotheses.json",
+) -> Path:
+    """
+    Saves generated test hypotheses for a website:
+    - Global list: <storage_root>/<domain>/planner/hypotheses.json
+    - Divided by category:
+      - <storage_root>/<domain>/planner/smoke/<id>.json
+      - <storage_root>/<domain>/planner/flows/<id>.json
+    - Summary metadata: <storage_root>/<domain>/planner/summary.json
+    """
+    planner_dir = get_planner_storage_dir(url_or_domain)
+    smoke_dir = planner_dir / "smoke"
+    flows_dir = planner_dir / "flows"
+    smoke_dir.mkdir(parents=True, exist_ok=True)
+    flows_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save complete hypotheses array
+    main_file = planner_dir / filename
+    with open(main_file, "w", encoding="utf-8") as f:
+        json.dump(hypotheses, f, indent=2, ensure_ascii=False)
+
+    smoke_tests = []
+    flow_tests = []
+
+    for item in hypotheses:
+        test_type = str(item.get("type", "FLOW")).upper()
+        test_id = item.get("id", "test_item")
+        if test_type == "SMOKE":
+            smoke_tests.append(item)
+            item_file = smoke_dir / f"{test_id}.json"
+        else:
+            flow_tests.append(item)
+            item_file = flows_dir / f"{test_id}.json"
+
+        with open(item_file, "w", encoding="utf-8") as f:
+            json.dump(item, f, indent=2, ensure_ascii=False)
+
+    # Summary metadata
+    summary = {
+        "url_or_domain": url_or_domain,
+        "total_hypotheses": len(hypotheses),
+        "smoke_count": len(smoke_tests),
+        "flow_count": len(flow_tests),
+        "smoke_ids": [t.get("id") for t in smoke_tests],
+        "flow_ids": [t.get("id") for t in flow_tests],
+    }
+    with open(planner_dir / "summary.json", "w", encoding="utf-8") as f:
+        json.dump(summary, f, indent=2, ensure_ascii=False)
+
+    return main_file

@@ -15,14 +15,10 @@ logger = logging.getLogger("forge.agent.builder")
 BUILDER_PYTHON_SYSTEM_PROMPT = """You are an elite Playwright Python Test Automation Engineer.
 Your task is to generate clean, robust, modern Playwright Python test scripts (.py) validating User Journeys on the web application.
 
-CORE TESTING PHILOSOPHY:
-You are validating a User Journey:
+TEST CATEGORIES:
+- If test_type is "SMOKE": Generate a concise sanity test verifying page load, target element presence/responsiveness, and primary state transition without complex branching.
+- If test_type is "FLOW": Generate a comprehensive multi-step user journey validating the full sequence:
     ACTION -> STATE TRANSITION -> OUTCOME
-Do NOT merely assert that an element exists on page load.
-A test MUST:
-1. Perform the user interaction (click button/link, fill form, trigger navigation).
-2. Verify the resulting application state transition (e.g. URL path change, modal/dialog open, form validation display, or submission confirmation).
-3. Validate the functional outcome specified in the user journey.
 
 Requirements for the generated Playwright Python test:
 1. Must use standard library imports and synchronous Playwright API:
@@ -53,14 +49,15 @@ Requirements for the generated Playwright Python test:
        test_{test_id}()
 
 3. Grounded Interaction Path Selection:
-   - Use the discovered elements list provided in context. It specifies exactly which elements are visible in the target viewport (visible_in_target_viewport is true).
+   - Use the discovered elements list and grounding_evidence provided in context.
+   - If grounding_evidence mentions elements (e.g. 'element:email', 'element:login_button'), match against discovered element selectors, forge_ids, or roles.
    - If target viewport is 'mobile' and an interaction is inside a mobile navigation drawer, use the discovered mobile menu toggle button to open it before clicking the navigation link.
    - Do NOT invent hypothetical selectors. Use the discovered element selectors, forge_ids, or roles.
    - Prefer `page.get_by_role(...)`, `page.get_by_text(...)`, `page.get_by_label(...)`, `page.locator(...)`.
 
 4. Always assert state transitions and functional outcomes:
    - Verify page URL / title transition: e.g. `expect(page).to_have_url(re.compile(r"..."))`
-   - Verify interactive state change: e.g. `expect(modal).to_be_visible()` or confirmation alert.
+   - Verify expected states specified in expected_outcomes: e.g. `expect(modal).to_be_visible()` or confirmation text.
 
 5. Output ONLY valid Python code without markdown fences, or wrapped in a single ```python block.
 """
@@ -175,9 +172,18 @@ def builder_node(state: ForgeState) -> Dict[str, Any]:
         ]
     }
 
+    test_type = str(current_test.get("type", "FLOW")).strip().upper()
+    intent = current_test.get("intent") or current_test.get("goal") or current_test.get("description", "")
+    expected = current_test.get("expected") or [current_test.get("expected_outcome", "")]
+    evidence = current_test.get("evidence", [])
+
     builder_payload: Dict[str, Any] = {
         "target_url": target_url,
         "test_scenario": current_test,
+        "test_type": test_type,
+        "intent": intent,
+        "expected_outcomes": expected,
+        "grounding_evidence": evidence,
         "target_viewport": {
             "name": target_vp_name,
             "width": vp_dims["width"],
@@ -236,7 +242,7 @@ def test_{test_id_clean}():
         try:
             page.goto('{target_url}', wait_until='domcontentloaded', timeout=30000)
             expect(page).to_have_title(re.compile(r".+")){interaction_block}
-            print('[TEST PASSED] Successfully completed journey on {target_url}')
+            print('[TEST PASSED] [{test_type}] Successfully completed journey on {target_url}')
         finally:
             context.close()
             browser.close()
@@ -248,11 +254,11 @@ if __name__ == "__main__":
         else:
             code = f"""import {{ test, expect }} from '@playwright/test';
 
-test.describe('{current_test.get("category", "regression").capitalize()} Suite', () => {{
+test.describe('[{test_type}] {current_test.get("category", "regression").capitalize()} Suite', () => {{
   test('{current_test.get("id", "test_smoke")}', async ({{ page }}) => {{
     await page.goto('{target_url}', {{ waitUntil: 'domcontentloaded', timeout: 30000 }});
     await expect(page).toHaveTitle(/.+/);
-    console.log('[TEST PASSED] Successfully loaded {target_url}');
+    console.log('[TEST PASSED] [{test_type}] Successfully loaded {target_url}');
   }});
 }});
 """
@@ -268,7 +274,13 @@ test.describe('{current_test.get("category", "regression").capitalize()} Suite',
     with open(test_file_path, "w", encoding="utf-8") as f:
         f.write(code)
 
-    logger.info(f"[TEST BUILDER] Saved {lang_label} test script to: {test_file_path}")
+    # Also organize into category subdirectory (tests/smoke/ or tests/flows/)
+    category_dir = tests_dir / ("smoke" if test_type == "SMOKE" else "flows")
+    category_dir.mkdir(parents=True, exist_ok=True)
+    with open(category_dir / f"{test_id}{ext}", "w", encoding="utf-8") as f:
+        f.write(code)
+
+    logger.info(f"[TEST BUILDER] Saved {lang_label} [{test_type}] test script to: {test_file_path}")
 
     # Index in Neon PostgreSQL
     try:

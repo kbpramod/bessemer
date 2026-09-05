@@ -14,16 +14,142 @@ class ForgeRepository:
     """
 
     @staticmethod
-    def upsert_website(domain: str, start_url: str) -> None:
+    def create_website(url: str, is_active: bool = True) -> Dict[str, Any]:
+        """Creates or updates a website by URL."""
+        from storage.local import sanitize_domain
+        domain = sanitize_domain(url)
         sql = """
-        INSERT INTO forge.websites (domain, start_url, last_discovered_at)
-        VALUES (:domain, :start_url, NOW())
-        ON CONFLICT (domain) DO UPDATE SET
-            start_url = EXCLUDED.start_url,
-            last_discovered_at = NOW();
+        INSERT INTO websites (url, domain, is_active, created_at, updated_at)
+        VALUES (:url, :domain, :is_active, NOW(), NOW())
+        ON CONFLICT (url) DO UPDATE SET
+            domain = EXCLUDED.domain,
+            is_active = EXCLUDED.is_active,
+            updated_at = NOW()
+        RETURNING id, url, domain, is_active, created_at, updated_at, last_discovered_at;
         """
         with get_connection() as conn:
-            conn.execute(text(sql), {"domain": domain, "start_url": start_url})
+            row = conn.execute(text(sql), {"url": url, "domain": domain, "is_active": is_active}).mappings().first()
+            return dict(row) if row else {}
+
+    @staticmethod
+    def upsert_website(domain: str, start_url: str) -> Dict[str, Any]:
+        """Upserts a website by start_url."""
+        sql = """
+        INSERT INTO websites (url, domain, is_active, created_at, updated_at, last_discovered_at)
+        VALUES (:url, :domain, TRUE, NOW(), NOW(), NOW())
+        ON CONFLICT (url) DO UPDATE SET
+            domain = EXCLUDED.domain,
+            updated_at = NOW(),
+            last_discovered_at = NOW()
+        RETURNING id, url, domain, is_active, created_at, updated_at, last_discovered_at;
+        """
+        with get_connection() as conn:
+            row = conn.execute(text(sql), {"url": start_url, "domain": domain}).mappings().first()
+            return dict(row) if row else {}
+
+    @staticmethod
+    def get_website_by_id(website_id: int) -> Optional[Dict[str, Any]]:
+        sql = "SELECT id, url, domain, is_active, created_at, updated_at, last_discovered_at FROM websites WHERE id = :id;"
+        with get_connection() as conn:
+            row = conn.execute(text(sql), {"id": website_id}).mappings().first()
+            return dict(row) if row else None
+
+    @staticmethod
+    def get_website_by_url(url: str) -> Optional[Dict[str, Any]]:
+        sql = "SELECT id, url, domain, is_active, created_at, updated_at, last_discovered_at FROM websites WHERE url = :url;"
+        with get_connection() as conn:
+            row = conn.execute(text(sql), {"url": url}).mappings().first()
+            return dict(row) if row else None
+
+    @staticmethod
+    def list_websites(active_only: bool = False) -> List[Dict[str, Any]]:
+        if active_only:
+            sql = "SELECT id, url, domain, is_active, created_at, updated_at, last_discovered_at FROM websites WHERE is_active = TRUE ORDER BY id ASC;"
+        else:
+            sql = "SELECT id, url, domain, is_active, created_at, updated_at, last_discovered_at FROM websites ORDER BY id ASC;"
+        with get_connection() as conn:
+            rows = conn.execute(text(sql)).mappings().all()
+            return [dict(r) for r in rows]
+
+    @staticmethod
+    def delete_website(website_id: int) -> bool:
+        sql = "DELETE FROM websites WHERE id = :id;"
+        with get_connection() as conn:
+            res = conn.execute(text(sql), {"id": website_id})
+            return res.rowcount > 0
+
+    # ==========================================
+    # Accounts Operations (One-to-Many with Websites)
+    # ==========================================
+    @staticmethod
+    def create_account(
+        website_id: int,
+        username: str,
+        password: str,
+        role: str = "user",
+        credentials: Optional[Dict[str, Any]] = None,
+        is_active: bool = True,
+    ) -> Dict[str, Any]:
+        """Creates or updates an account associated with a website."""
+        sql = """
+        INSERT INTO accounts (website_id, username, password, role, credentials, is_active, created_at, updated_at)
+        VALUES (:website_id, :username, :password, :role, :credentials, :is_active, NOW(), NOW())
+        ON CONFLICT (website_id, username) DO UPDATE SET
+            password = EXCLUDED.password,
+            role = EXCLUDED.role,
+            credentials = EXCLUDED.credentials,
+            is_active = EXCLUDED.is_active,
+            updated_at = NOW()
+        RETURNING id, website_id, username, role, credentials, is_active, created_at, updated_at;
+        """
+        with get_connection() as conn:
+            row = conn.execute(
+                text(sql),
+                {
+                    "website_id": website_id,
+                    "username": username,
+                    "password": password,
+                    "role": role,
+                    "credentials": json.dumps(credentials or {}),
+                    "is_active": is_active,
+                },
+            ).mappings().first()
+            return dict(row) if row else {}
+
+    @staticmethod
+    def list_accounts_for_website(
+        website_id: int,
+        role: Optional[str] = None,
+        active_only: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """Lists all accounts belonging to a website, optionally filtered by role."""
+        clauses = ["website_id = :website_id"]
+        params: Dict[str, Any] = {"website_id": website_id}
+        if role:
+            clauses.append("role = :role")
+            params["role"] = role
+        if active_only:
+            clauses.append("is_active = TRUE")
+
+        where_str = " AND ".join(clauses)
+        sql = f"SELECT id, website_id, username, role, credentials, is_active, created_at, updated_at FROM accounts WHERE {where_str} ORDER BY id ASC;"
+        with get_connection() as conn:
+            rows = conn.execute(text(sql), params).mappings().all()
+            return [dict(r) for r in rows]
+
+    @staticmethod
+    def get_account(account_id: int) -> Optional[Dict[str, Any]]:
+        sql = "SELECT id, website_id, username, role, credentials, is_active, created_at, updated_at FROM accounts WHERE id = :id;"
+        with get_connection() as conn:
+            row = conn.execute(text(sql), {"id": account_id}).mappings().first()
+            return dict(row) if row else None
+
+    @staticmethod
+    def delete_account(account_id: int) -> bool:
+        sql = "DELETE FROM accounts WHERE id = :id;"
+        with get_connection() as conn:
+            res = conn.execute(text(sql), {"id": account_id})
+            return res.rowcount > 0
 
     @staticmethod
     def record_page_discovery(
@@ -33,14 +159,14 @@ class ForgeRepository:
     ) -> None:
         understanding = understanding or {}
         sql = """
-        INSERT INTO forge.pages (domain, url, title, slug, page_type, purpose, primary_actions, state_preconditions, discovered_at)
+        INSERT INTO pages (domain, url, title, slug, page_type, purpose, primary_actions, state_preconditions, discovered_at)
         VALUES (:domain, :url, :title, :slug, :page_type, :purpose, :primary_actions, :state_preconditions, NOW())
         ON CONFLICT (url) DO UPDATE SET
             title = EXCLUDED.title,
-            page_type = COALESCE(EXCLUDED.page_type, forge.pages.page_type),
-            purpose = COALESCE(EXCLUDED.purpose, forge.pages.purpose),
-            primary_actions = COALESCE(EXCLUDED.primary_actions, forge.pages.primary_actions),
-            state_preconditions = COALESCE(EXCLUDED.state_preconditions, forge.pages.state_preconditions),
+            page_type = COALESCE(EXCLUDED.page_type, pages.page_type),
+            purpose = COALESCE(EXCLUDED.purpose, pages.purpose),
+            primary_actions = COALESCE(EXCLUDED.primary_actions, pages.primary_actions),
+            state_preconditions = COALESCE(EXCLUDED.state_preconditions, pages.state_preconditions),
             discovered_at = NOW();
         """
         with get_connection() as conn:
@@ -64,7 +190,7 @@ class ForgeRepository:
             return
 
         sql = """
-        INSERT INTO forge.elements (forge_id, page_url, tag, element_type, text, selector, bounding_box, discovered_at)
+        INSERT INTO elements (forge_id, page_url, tag, element_type, text, selector, bounding_box, discovered_at)
         VALUES (:forge_id, :page_url, :tag, :element_type, :text, :selector, :bounding_box, NOW())
         ON CONFLICT (forge_id, page_url) DO UPDATE SET
             text = EXCLUDED.text,
@@ -105,7 +231,7 @@ class ForgeRepository:
         language: str = "typescript",
     ) -> None:
         sql = """
-        INSERT INTO forge.tests (
+        INSERT INTO tests (
             test_id, domain, page_url, title, description, category, priority,
             steps, expected_outcome, script_path, test_code, language, status, updated_at
         ) VALUES (
@@ -117,8 +243,8 @@ class ForgeRepository:
             description = EXCLUDED.description,
             steps = EXCLUDED.steps,
             expected_outcome = EXCLUDED.expected_outcome,
-            script_path = COALESCE(EXCLUDED.script_path, forge.tests.script_path),
-            test_code = COALESCE(EXCLUDED.test_code, forge.tests.test_code),
+            script_path = COALESCE(EXCLUDED.script_path, tests.script_path),
+            test_code = COALESCE(EXCLUDED.test_code, tests.test_code),
             language = EXCLUDED.language,
             status = 'active',
             updated_at = NOW();
@@ -156,7 +282,7 @@ class ForgeRepository:
         trace_path: Optional[str] = None,
     ) -> None:
         sql = """
-        INSERT INTO forge.test_runs (
+        INSERT INTO test_runs (
             run_id, test_id, exit_code, status, duration_s,
             error_summary, stdout, stderr, screenshot_paths, trace_path, executed_at
         ) VALUES (
@@ -191,7 +317,7 @@ class ForgeRepository:
         run_id: Optional[str] = None,
     ) -> None:
         sql = """
-        INSERT INTO forge.heals (test_id, run_id, attempt, error_snippet, diagnosis, fix_plan, healed_at)
+        INSERT INTO heals (test_id, run_id, attempt, error_snippet, diagnosis, fix_plan, healed_at)
         VALUES (:test_id, :run_id, :attempt, :error_snippet, :diagnosis, :fix_plan, NOW());
         """
         with get_connection() as conn:
@@ -209,7 +335,7 @@ class ForgeRepository:
 
     @staticmethod
     def get_active_tests(domain: Optional[str] = None) -> List[Dict[str, Any]]:
-        sql = "SELECT * FROM forge.tests WHERE status = 'active'"
+        sql = "SELECT * FROM tests WHERE status = 'active'"
         params = {}
         if domain:
             sql += " AND domain = :domain"
@@ -226,8 +352,8 @@ class ForgeRepository:
         sql = """
         SELECT DISTINCT ON (r.test_id)
             r.test_id, t.title, t.domain, r.status, r.error_summary, r.duration_s, r.executed_at
-        FROM forge.test_runs r
-        JOIN forge.tests t ON r.test_id = t.test_id
+        FROM test_runs r
+        JOIN tests t ON r.test_id = t.test_id
         WHERE r.status != 'PASSED'
           AND r.executed_at >= NOW() - INTERVAL ':hours HOUR'
         ORDER BY r.test_id, r.executed_at DESC;
@@ -241,7 +367,7 @@ class ForgeRepository:
     def search_tests(query_text: str) -> List[Dict[str, Any]]:
         sql = """
         SELECT test_id, domain, title, description, category, priority, script_path, status
-        FROM forge.tests
+        FROM tests
         WHERE title ILIKE :q OR description ILIKE :q OR test_id ILIKE :q OR domain ILIKE :q
         ORDER BY priority DESC;
         """
@@ -258,7 +384,7 @@ class ForgeRepository:
             COUNT(*) FILTER (WHERE status = 'FAILED') as failed_runs,
             COUNT(*) FILTER (WHERE status = 'HEALED') as healed_runs,
             AVG(duration_s) as avg_duration_s
-        FROM forge.test_runs
+        FROM test_runs
         WHERE executed_at >= NOW() - INTERVAL ':hours HOUR';
         """.replace(":hours", str(int(hours)))
 
@@ -271,3 +397,4 @@ class ForgeRepository:
                 "healed_runs": row.get("healed_runs") or 0,
                 "avg_duration_s": round(row.get("avg_duration_s") or 0.0, 2),
             }
+
