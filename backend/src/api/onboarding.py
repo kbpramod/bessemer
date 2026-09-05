@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, status, BackgroundTasks
 from fastapi.responses import StreamingResponse
 import asyncio
 
-from ..events import publish_event, get_event_queue
+from events import publish_event, get_event_queue
 
 from db.repository import ForgeRepository
 from schemas.account import AccountCreate, AccountResponse
